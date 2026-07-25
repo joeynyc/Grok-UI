@@ -75,6 +75,8 @@ const NAV_ITEMS: NavItem[] = [
 
 type ThemeId = 'operator' | 'event-horizon'
 
+const DEFAULT_THEME: ThemeId = 'event-horizon'
+
 const THEMES: Array<{
   id: ThemeId
   name: string
@@ -97,9 +99,10 @@ const THEMES: Array<{
 
 function storedTheme(): ThemeId {
   try {
-    return localStorage.getItem('grok-ui-theme') === 'event-horizon' ? 'event-horizon' : 'operator'
+    const stored = localStorage.getItem('grok-ui-theme')
+    return stored === 'operator' || stored === 'event-horizon' ? stored : DEFAULT_THEME
   } catch {
-    return 'operator'
+    return DEFAULT_THEME
   }
 }
 

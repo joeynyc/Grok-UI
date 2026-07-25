@@ -61,6 +61,13 @@ async function registerLiveSession() {
 }
 
 test.describe.serial('public launch path', () => {
+  test('defaults a fresh browser to the Event Horizon theme', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'event-horizon')
+    expect(await page.evaluate(() => localStorage.getItem('grok-ui-theme'))).toBe('event-horizon')
+  })
+
   test('guides a clean installation through missing CLI and ready states', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible()
