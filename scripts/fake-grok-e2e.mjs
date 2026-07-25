@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 
 const args = process.argv.slice(2)
 const readyMarker = path.join(process.env.GROK_HOME || '', 'e2e-cli-ready')
+const setupMode = existsSync(readyMarker) ? readFileSync(readyMarker, 'utf8').trim() : 'missing'
 
 if (args[0] === 'version') {
-  if (!existsSync(readyMarker)) process.exit(1)
+  if (setupMode === 'missing') process.exit(1)
   console.log('Grok Build e2e')
   process.exit(0)
 }
 
 if (args[0] === 'models') {
-  if (!existsSync(readyMarker)) process.exit(1)
+  if (setupMode !== 'ready') process.exit(1)
   console.log('grok-e2e')
   process.exit(0)
 }

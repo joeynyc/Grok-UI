@@ -67,6 +67,13 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('FIRST CONTACT / SETUP REQUIRED')).toBeVisible()
     await expect(page.getByText('Grok CLI is missing or cannot run.')).toBeVisible()
 
+    await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'unauthenticated\n')
+    await page.getByRole('button', { name: /Recheck setup/ }).click()
+
+    await expect(page.getByText('FIRST CONTACT / SETUP REQUIRED')).toBeVisible()
+    await expect(page.getByText('Grok Build e2e')).toBeVisible()
+    await expect(page.getByText('Authentication is required.')).toBeVisible()
+
     await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'ready\n')
     await page.getByRole('button', { name: /Recheck setup/ }).click()
 

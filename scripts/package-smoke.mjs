@@ -71,12 +71,12 @@ try {
   ])
   await fs.writeFile(path.join(installDirectory, 'package.json'), '{"private":true,"type":"module"}\n')
   await fs.writeFile(fakeGrok, `#!/usr/bin/env node
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 const marker = path.join(process.env.GROK_HOME || '', 'package-cli-ready')
-if (!existsSync(marker)) process.exit(1)
-if (process.argv[2] === 'version') console.log('Grok Build package-smoke')
-else if (process.argv[2] === 'models') console.log('grok-package-smoke')
+const mode = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : 'missing'
+if (process.argv[2] === 'version' && mode !== 'missing') console.log('Grok Build package-smoke')
+else if (process.argv[2] === 'models' && mode === 'ready') console.log('grok-package-smoke')
 else process.exit(1)
 `)
   await fs.chmod(fakeGrok, 0o755)
@@ -162,6 +162,18 @@ else process.exit(1)
   ) {
     throw new Error(`unexpected setup diagnostics: ${JSON.stringify(setup)}`)
   }
+  await fs.writeFile(readyMarker, 'unauthenticated\n')
+  const loggedOutResponse = await fetch(`http://127.0.0.1:${port}/api/setup?refresh=1`)
+  const loggedOutSetup = await loggedOutResponse.json()
+  if (
+    !loggedOutResponse.ok
+    || loggedOutSetup.ready
+    || loggedOutSetup.checks?.find((check) => check.id === 'cli')?.state !== 'ready'
+    || loggedOutSetup.checks?.find((check) => check.id === 'auth')?.state !== 'action'
+  ) {
+    throw new Error(`packaged onboarding did not identify logged-out CLI: ${JSON.stringify(loggedOutSetup)}`)
+  }
+
   await fs.writeFile(readyMarker, 'ready\n')
   const readyResponse = await fetch(`http://127.0.0.1:${port}/api/setup?refresh=1`)
   const readySetup = await readyResponse.json()
@@ -201,6 +213,7 @@ else process.exit(1)
   console.log(`✓ Production server   health check passed on ${process.platform}`)
   console.log(`✓ Browser security    CSP and frame protection headers confirmed`)
   console.log(`✓ First-run failure   missing CLI returned actionable diagnostics`)
+  console.log(`✓ First-run logged out installed CLI requested account authentication`)
   console.log(`✓ First-run ready     CLI and account checks transitioned to ready`)
   console.log(`✓ Live registration   new CLI session discovered by the packaged server`)
 } finally {
