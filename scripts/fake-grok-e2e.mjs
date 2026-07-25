@@ -44,6 +44,52 @@ function waitForCancellation(sessionId) {
   return new Promise((resolve) => cancelWaiters.set(sessionId, resolve))
 }
 
+async function notifyWorkflow(client, sessionId, status, overrides = {}) {
+  const completed = status === 'completed'
+  const failed = status === 'failed'
+  await client.notify('x.ai/session_notification', {
+    sessionId,
+    update: {
+      sessionUpdate: 'workflow_updated',
+      run_id: 'workflow-run-1',
+      display_name: 'release-check',
+      objective: 'Ship a verified release across every implementation lane.',
+      foreground: false,
+      status,
+      phases: [
+        { id: 'plan', name: 'Plan release', status: 'completed' },
+        { id: 'build', name: 'Build artifact', status: completed ? 'completed' : 'completed' },
+        { id: 'verify', name: 'Verify release', status: completed ? 'completed' : failed ? 'failed' : 'in_progress' },
+      ],
+      current_phase: 'verify',
+      agent_budget: 8,
+      agents_used: completed ? 5 : 4,
+      agents_reserved: 0,
+      agent_usage_incomplete: false,
+      active_agents: status === 'running' ? 1 : 0,
+      current_agent_label: status === 'running' ? 'Verifier' : '',
+      agents: [
+        { id: 'builder', label: 'Builder', status: 'completed', detail: 'Artifact assembled' },
+        {
+          id: 'verifier',
+          label: 'Verifier',
+          status: completed ? 'completed' : failed ? 'failed' : 'running',
+          detail: completed ? 'Release checks passed' : failed ? 'Fixture check failed' : 'Re-running release checks',
+        },
+      ],
+      last_event: completed ? 'workflow_completed' : failed ? 'workflow_failed' : 'workflow_resumed',
+      last_event_detail: completed
+        ? 'All release verification lanes passed.'
+        : failed
+          ? 'Verification lane reported a recoverable failure.'
+          : 'Failed workflow resumed from the verification phase.',
+      last_event_timestamp: new Date().toISOString(),
+      result_summary: completed ? 'Release verified and ready to ship.' : '',
+      ...overrides,
+    },
+  })
+}
+
 const stream = acp.ndJsonStream(
   Writable.toWeb(process.stdout),
   Readable.toWeb(process.stdin),
@@ -79,6 +125,28 @@ const agent = acp.agent({ name: 'grok-e2e' })
         content: { type: 'text', text: 'E2E agent received the command.' },
       },
     })
+    if (instruction.includes('Start workflow fixture')) {
+      await notifyWorkflow(client, params.sessionId, 'failed')
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 10, outputTokens: 6, totalTokens: 16 },
+      }
+    }
+    if (instruction === '/workflow resume release-check') {
+      await notifyWorkflow(client, params.sessionId, 'running')
+      await notifyWorkflow(client, params.sessionId, 'completed')
+      await client.notify(acp.methods.client.session.update, {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'Workflow release-check resumed and completed.' },
+        },
+      })
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+      }
+    }
     if (instruction.includes('long-running cancellation') || instruction.includes('ignored cancellation')) {
       if (instruction.includes('ignored cancellation')) ignoredCancellationSessions.add(params.sessionId)
       await client.notify(acp.methods.client.session.update, {

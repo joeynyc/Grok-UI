@@ -1,4 +1,4 @@
-export type ViewId = 'live' | 'control' | 'changes' | 'overview' | 'sessions' | 'activity' | 'library' | 'memory' | 'themes'
+export type ViewId = 'live' | 'control' | 'runs' | 'changes' | 'overview' | 'sessions' | 'activity' | 'library' | 'memory' | 'themes'
 export type SessionStatus = 'live' | 'recent' | 'idle' | 'attention'
 
 export interface SessionRow {
@@ -146,6 +146,57 @@ export interface LiveSnapshot {
 
 export type ControlSessionState = 'starting' | 'idle' | 'working' | 'attention' | 'stopping' | 'cancelled' | 'failed'
 export type ControlCancellationStatus = 'none' | 'requested' | 'confirmed' | 'timed_out' | 'failed'
+export type WorkflowRunStatus =
+  | 'running'
+  | 'paused'
+  | 'failed'
+  | 'completed'
+  | 'cancelled'
+  | 'budget-limited'
+  | 'interrupted'
+  | 'unknown'
+export type WorkflowControlAction = 'pause' | 'resume' | 'stop'
+
+export interface WorkflowPhase {
+  id: string
+  label: string
+  status: string
+}
+
+export interface WorkflowAgent {
+  id: string
+  label: string
+  status: string
+  detail: string
+}
+
+export interface WorkflowRun {
+  id: string
+  controlHandle: string
+  displayName: string
+  sessionId: string
+  objective: string
+  foreground: boolean
+  status: WorkflowRunStatus
+  phases: WorkflowPhase[]
+  currentPhase: string
+  agentBudget: number
+  agentsUsed: number
+  agentsReserved: number
+  usageIncomplete: boolean
+  activeAgents: number
+  currentAgentLabel: string
+  agents: WorkflowAgent[]
+  lastEvent: string
+  lastEventDetail: string
+  lastEventAt: string
+  pauseMessage: string
+  resultSummary: string
+  updatedAt: string
+  canPause: boolean
+  canResume: boolean
+  canStop: boolean
+}
 
 export interface ControlSession {
   id: string
@@ -167,6 +218,7 @@ export interface ControlSession {
   costAmount: number
   costCurrency: string
   feed: LiveFeedItem[]
+  workflows: WorkflowRun[]
 }
 
 export interface ControlPermissionOption {
@@ -193,6 +245,7 @@ export interface ControlSnapshot {
   agentVersion: string
   error: string
   sessions: ControlSession[]
+  workflows: WorkflowRun[]
   permissions: ControlPermission[]
 }
 

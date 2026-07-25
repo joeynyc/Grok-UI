@@ -27,6 +27,7 @@ import {
   TerminalSquare,
   TimerReset,
   ToolCase,
+  Workflow,
   X,
   Zap,
   type LucideIcon,
@@ -50,6 +51,7 @@ import type {
 import { ChangesView } from './views/ChangesView'
 import { ControlView } from './views/ControlView'
 import { SessionWorkbench } from './views/SessionWorkbench'
+import { WorkflowsView } from './views/WorkflowsView'
 import { PrivacyProvider, usePrivacy } from './privacy'
 import packageJson from '../package.json'
 
@@ -64,13 +66,14 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'live', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
   { id: 'control', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
-  { id: 'changes', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '3' },
-  { id: 'overview', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '4' },
-  { id: 'sessions', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '5' },
-  { id: 'activity', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '6' },
-  { id: 'library', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '7' },
-  { id: 'memory', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '8' },
-  { id: 'themes', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '9' },
+  { id: 'runs', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '3' },
+  { id: 'changes', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '4' },
+  { id: 'overview', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
+  { id: 'sessions', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
+  { id: 'activity', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
+  { id: 'library', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
+  { id: 'memory', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
+  { id: 'themes', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
 ]
 
 type ThemeId = 'operator' | 'event-horizon'
@@ -363,6 +366,14 @@ function App() {
                 onOpenSession={openSession}
               />
             )}
+            {view === 'runs' && (
+              <WorkflowsView
+                control={control}
+                connected={streamConnected}
+                onRefresh={refreshControl}
+                onOpenSession={openSession}
+              />
+            )}
             {view === 'changes' && (
               <ChangesView
                 data={data}
@@ -455,7 +466,7 @@ function ThemesView({
   return (
     <>
       <PageIntro
-        index="09"
+        index="10"
         eyebrow="Visual systems"
         title={<>Choose your<br /><em>command atmosphere.</em></>}
         description="Switch the entire dashboard aesthetic without changing your data, sessions, or workflow. Your selection stays active on this device."
@@ -546,7 +557,7 @@ function Sidebar({
                 className={`nav-item ${active === item.id ? 'is-active' : ''}`}
                 onClick={() => onNavigate(item.id)}
               >
-                <span className="nav-index">0{item.shortcut}</span>
+                <span className="nav-index">{item.shortcut === '0' ? '10' : `0${item.shortcut}`}</span>
                 <Icon size={17} strokeWidth={1.7} />
                 <span className="nav-copy">
                   <strong>{item.label}</strong>
@@ -1004,7 +1015,7 @@ function Overview({
   return (
     <>
       <PageIntro
-        index="04"
+        index="05"
         eyebrow="Local intelligence"
         title={<>Your Grok,<br /><em>at a glance.</em></>}
         description="A read-only flight recorder for every local Grok Build session, tool run, model, workspace, and durable memory."
@@ -1353,7 +1364,7 @@ function SessionsView({
   return (
     <>
       <PageIntro
-        index="05"
+        index="06"
         eyebrow="Conversation archive"
         title={<>Every run.<br /><em>Nothing buried.</em></>}
         description="Search local session metadata without sending conversation content anywhere."
@@ -1413,7 +1424,7 @@ function ActivityView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="06"
+        index="07"
         eyebrow="Operational telemetry"
         title={<>The shape of<br /><em>the work.</em></>}
         description="A two-week read on agent velocity, tool intensity, code movement, and friction."
@@ -1507,7 +1518,7 @@ function LibraryView({
   return (
     <>
       <PageIntro
-        index="07"
+        index="08"
         eyebrow="Capability library"
         title={<>What Grok can<br /><em>reach for.</em></>}
         description="The local skills, agent profiles, and marketplace packages shaping every run."
@@ -1546,7 +1557,7 @@ function MemoryView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="08"
+        index="09"
         eyebrow="Durable recall"
         title={<>Memory without<br /><em>the mystery.</em></>}
         description="A privacy-conscious inventory of Grok’s durable Markdown memory. Content stays on disk and is not rendered here."
@@ -1595,7 +1606,7 @@ function PageIntro({
 }) {
   return (
     <header className="page-intro">
-      <div className="intro-index">{index} / 09</div>
+      <div className="intro-index">{index} / 10</div>
       <div>
         <div className="kicker">{eyebrow}</div>
         <h1>{title}</h1>
