@@ -19,13 +19,13 @@ attaches the verified package to a GitHub release.
 
 ## npm publication
 
-The unscoped `grok-ui` package name was available when packaging was added.
-Registry availability must be checked again immediately before the first
-publication:
+The public package is published as
+[`grok-ui`](https://www.npmjs.com/package/grok-ui). Verify the tagged version,
+registry identity, and current authentication immediately before publication:
 
 ```bash
-npm view grok-ui
-npm login
+npm view grok-ui version
+npm whoami
 npm publish
 ```
 

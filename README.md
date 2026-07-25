@@ -18,7 +18,9 @@ and move through your complete local history without leaving the browser.
 
 <img src="docs/grok-ui-dashboard.png" width="900" alt="Grok UI Event Horizon dashboard with live runtime telemetry"/>
 
-[**Quickstart**](#quickstart) · [**What it does**](#what-it-does) · [**Architecture**](#architecture) · [**Security**](#privacy-and-security)
+[**Watch the 24-second demo**](https://github.com/joeynyc/Grok-UI/releases/download/v0.5.1/grok-ui-dashboard-tour-final-white-logo.mp4)
+· [**Quickstart**](#quickstart) · [**What it does**](#what-it-does)
+· [**Architecture**](#architecture) · [**Security**](#privacy-and-security)
 
 </div>
 

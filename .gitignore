@@ -12,3 +12,6 @@ coverage/
 test-results/
 playwright-report/
 .grok-ui/
+
+# Local demo-production project, raw captures, and rendered media.
+videos/

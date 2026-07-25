@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 — 2026-07-25
+
+- Made Event Horizon the default visual system for first-time launches.
+- Updated the application, repository artwork, and package assets to use the
+  current red Grok command mark.
+- Added a production browser journey for logged-out onboarding and recovery.
+- Added a sanitized 24-second public demo covering live session arrival,
+  Control, Changes, Overview, Activity, and theme switching.
+
 ## 0.5.0 — 2026-07-24
 
 - Added the installable `grok-ui` executable with browser auto-open, help,
