@@ -88,7 +88,9 @@ that the current process can resume them.
 ## Architecture
 
 <div align="center">
+<a href="https://raw.githubusercontent.com/joeynyc/Grok-UI/main/docs/architecture.svg">
 <img src="docs/architecture.svg" width="820" alt="Browser connected to Grok UI server, local Grok state, ACP agent, and Git workspaces"/>
+</a>
 </div>
 
 Grok UI runs as one local Express supervisor. The browser receives runtime,
