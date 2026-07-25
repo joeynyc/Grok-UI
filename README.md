@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/favicon.svg" width="112" alt="Grok UI"/>
+<img src="https://raw.githubusercontent.com/joeynyc/Grok-UI/main/docs/grok-ui-red-mark.png" width="128" alt="Grok UI red command mark"/>
 
 # Grok UI
 
