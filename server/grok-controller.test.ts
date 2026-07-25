@@ -39,6 +39,8 @@ describe('GrokController cancellation', () => {
       cwd: workspace,
       prompt: 'Run the ignored cancellation verification',
     })
+    await waitFor(() => controller.snapshot().sessions[0]?.feed.some((item) =>
+      item.title === 'Long-running cancellation fixture') === true, 5_000)
 
     await controller.cancelSession(created.id)
     expect(controller.snapshot().sessions[0]).toMatchObject({
