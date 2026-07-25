@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — 2026-07-25
+
+- Added a cross-session Workflow Command Center powered by Grok Build workflow
+  telemetry.
+- Added live run status, objectives, phase progression, agent rosters, budget
+  usage, latest events, result summaries, and parent-workbench navigation.
+- Added run filters and safe Pause, Resume, and Stop controls, with failed-run
+  recovery enabled only when Grok reports a recoverable display handle.
+- Added persisted workflow snapshots with controls disabled after server
+  restarts, and extended Privacy Mode to workflow content.
+- Added controller, workflow-state, workbench, and browser coverage for live
+  workflow behavior and responsive dashboard presentation.
+
 ## 0.6.0 — 2026-07-25
 
 - Added confirmed cancellation states for dashboard-managed Grok turns.
