@@ -13,9 +13,11 @@ import type {
   ControlSession,
   ControlSnapshot,
   LiveFeedItem,
+  WorkflowControlAction,
 } from './types.js'
 import { SessionStateStore } from './session-state.js'
 import { APP_VERSION } from './app-version.js'
+import { parseWorkflowNotification, workflowControlCommand } from './workflow-state.js'
 
 interface NewControlSession {
   cwd: string
@@ -70,6 +72,7 @@ function sessionSeed(id: string, cwd: string, prompt: string, model = ''): Contr
     costAmount: 0,
     costCurrency: '',
     feed: [],
+    workflows: [],
   }
 }
 
@@ -169,6 +172,9 @@ export class GrokController extends EventEmitter {
       agentVersion: this.agentVersion,
       error: this.error,
       sessions: [...this.sessions.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      workflows: [...this.sessions.values()]
+        .flatMap((session) => session.workflows)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       permissions: [...this.permissions.values()]
         .map((item) => item.public)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -328,6 +334,31 @@ export class GrokController extends EventEmitter {
     }
   }
 
+  async controlWorkflow(
+    sessionId: string,
+    workflowId: string,
+    action: WorkflowControlAction,
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error('Managed session was not found.')
+    const workflow = session.workflows.find((item) => item.id === workflowId)
+    if (!workflow) throw new Error('Workflow run was not found.')
+    const allowed = action === 'pause'
+      ? workflow.canPause
+      : action === 'resume'
+        ? workflow.canResume
+        : workflow.canStop
+    if (!allowed) throw new Error(`This workflow cannot ${action} from its current state.`)
+    if (['starting', 'working', 'attention', 'stopping'].includes(session.state)) {
+      throw new Error('Wait for the parent session turn to settle before controlling this workflow.')
+    }
+    await this.promptSession({
+      sessionId,
+      cwd: session.cwd,
+      prompt: workflowControlCommand(action, workflow.controlHandle),
+    })
+  }
+
   resolvePermission(permissionId: string, optionId?: string): boolean {
     const pending = this.permissions.get(permissionId)
     if (!pending) return false
@@ -381,6 +412,9 @@ export class GrokController extends EventEmitter {
           this.requestPermission(params))
         .onNotification(acp.methods.client.session.update, ({ params }) => {
           this.sessionUpdate(params)
+        })
+        .onNotification('x.ai/session_notification', (params: unknown) => params, ({ params }) => {
+          this.workflowUpdate(params)
         })
       const connection = app.connect(stream)
       this.connection = connection
@@ -592,6 +626,25 @@ export class GrokController extends EventEmitter {
       }
     }
     this.sessions.set(params.sessionId, next)
+    this.emitSnapshot()
+  }
+
+  private workflowUpdate(params: unknown) {
+    const initial = parseWorkflowNotification(params)
+    if (!initial) return
+    const session = this.sessions.get(initial.sessionId)
+    if (!session) return
+    const existing = session.workflows.find((workflow) => workflow.id === initial.run.id)
+    const parsed = existing ? parseWorkflowNotification(params, existing) : initial
+    if (!parsed) return
+    const workflows = session.workflows.some((workflow) => workflow.id === parsed.run.id)
+      ? session.workflows.map((workflow) => workflow.id === parsed.run.id ? parsed.run : workflow)
+      : [parsed.run, ...session.workflows]
+    this.sessions.set(session.id, {
+      ...session,
+      updatedAt: parsed.run.updatedAt,
+      workflows: workflows.slice(0, 80),
+    })
     this.emitSnapshot()
   }
 

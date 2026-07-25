@@ -126,6 +126,19 @@ app.post('/api/control/sessions/:id/cancel', async (request, response) => {
   }
 })
 
+app.post('/api/control/sessions/:sessionId/workflows/:workflowId', async (request, response) => {
+  try {
+    const action = request.body?.action
+    if (action !== 'pause' && action !== 'resume' && action !== 'stop') {
+      throw new Error('Workflow action must be pause, resume, or stop.')
+    }
+    await controller.controlWorkflow(request.params.sessionId, request.params.workflowId, action)
+    response.status(202).json({ accepted: true })
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to control workflow.' })
+  }
+})
+
 app.post('/api/control/permissions/:id', (request, response) => {
   const optionId = typeof request.body?.optionId === 'string' ? request.body.optionId : undefined
   if (!controller.resolvePermission(request.params.id, optionId)) {

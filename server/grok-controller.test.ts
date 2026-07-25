@@ -57,3 +57,42 @@ describe('GrokController cancellation', () => {
     expect(controller.snapshot().sessions[0].error).toContain('did not confirm')
   })
 })
+
+describe('GrokController workflows', () => {
+  it('collects cross-session telemetry and resumes a failed run through Grok', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-workflow-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const created = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Start workflow fixture',
+    })
+    await waitFor(() => controller.snapshot().workflows[0]?.status === 'failed', 5_000)
+
+    expect(controller.snapshot().workflows[0]).toMatchObject({
+      id: 'workflow-run-1',
+      sessionId: created.id,
+      displayName: 'release-check',
+      status: 'failed',
+      currentPhase: 'verify',
+      agentBudget: 8,
+      agentsUsed: 4,
+      canResume: true,
+    })
+
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle', 5_000)
+    await controller.controlWorkflow(created.id, 'workflow-run-1', 'resume')
+    await waitFor(() => controller.snapshot().workflows[0]?.status === 'completed', 5_000)
+
+    expect(controller.snapshot().workflows[0]).toMatchObject({
+      status: 'completed',
+      resultSummary: 'Release verified and ready to ship.',
+      agentsUsed: 5,
+      canResume: false,
+    })
+    expect(controller.snapshot().sessions[0]?.lastPrompt).toBe('/workflow resume release-check')
+  })
+})

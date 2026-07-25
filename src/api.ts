@@ -6,6 +6,7 @@ import type {
   SessionWorkbenchData,
   LiveSnapshot,
   SetupStatus,
+  WorkflowControlAction,
   WorkspaceDiff,
   WorkspaceSnapshot,
 } from './types'
@@ -81,6 +82,21 @@ export async function cancelControlSession(sessionId: string): Promise<void> {
   await json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/cancel`, {
     method: 'POST',
   }), 'Unable to cancel session')
+}
+
+export async function controlWorkflow(
+  sessionId: string,
+  workflowId: string,
+  action: WorkflowControlAction,
+): Promise<void> {
+  await json(await fetch(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/workflows/${encodeURIComponent(workflowId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    },
+  ), `Unable to ${action} workflow`)
 }
 
 export async function resolveControlPermission(permissionId: string, optionId?: string): Promise<void> {

@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ControlSession, SessionRow } from './types.js'
+import type { ControlSession, SessionRow, WorkflowRun } from './types.js'
+import { interruptRestoredWorkflow } from './workflow-state.js'
 
 export interface SessionAnnotation {
   title?: string
@@ -54,6 +55,11 @@ function normalizeControlSession(value: unknown): ControlSession | null {
     costAmount: Number(item.costAmount) || 0,
     costCurrency: typeof item.costCurrency === 'string' ? item.costCurrency : '',
     feed: Array.isArray(item.feed) ? item.feed.slice(-120) : [],
+    workflows: Array.isArray(item.workflows)
+      ? item.workflows
+        .filter((workflow) => workflow && typeof workflow === 'object')
+        .map((workflow) => interruptRestoredWorkflow(workflow as WorkflowRun))
+      : [],
   }
 }
 
@@ -116,6 +122,11 @@ export class SessionStateStore {
     return this.state.managedSessions.map((session) => ({
       ...session,
       feed: [...session.feed],
+      workflows: session.workflows.map((workflow) => ({
+        ...workflow,
+        phases: workflow.phases.map((phase) => ({ ...phase })),
+        agents: workflow.agents.map((agent) => ({ ...agent })),
+      })),
     }))
   }
 
@@ -141,6 +152,11 @@ export class SessionStateStore {
     this.state.managedSessions = sessions.map((session) => ({
       ...session,
       feed: session.feed.slice(-120),
+      workflows: session.workflows.map((workflow) => ({
+        ...workflow,
+        phases: workflow.phases.map((phase) => ({ ...phase })),
+        agents: workflow.agents.map((agent) => ({ ...agent })),
+      })),
     }))
     await this.persist()
   }

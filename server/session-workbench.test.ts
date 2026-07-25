@@ -41,6 +41,33 @@ function managedSession(state: ControlSession['state'] = 'working'): ControlSess
     totalTokens: 200,
     costAmount: 0.02,
     costCurrency: 'USD',
+    workflows: [{
+      id: 'workflow-durable-1',
+      controlHandle: 'durable-run',
+      displayName: 'durable-run',
+      sessionId: 'session-durable-1',
+      objective: 'Complete durable work',
+      foreground: false,
+      status: 'running',
+      phases: [],
+      currentPhase: 'build',
+      agentBudget: 4,
+      agentsUsed: 2,
+      agentsReserved: 0,
+      usageIncomplete: false,
+      activeAgents: 1,
+      currentAgentLabel: 'Builder',
+      agents: [],
+      lastEvent: 'workflow_started',
+      lastEventDetail: '',
+      lastEventAt: '2026-07-24T10:01:00.000Z',
+      pauseMessage: '',
+      resultSummary: '',
+      updatedAt: '2026-07-24T10:01:00.000Z',
+      canPause: true,
+      canResume: false,
+      canStop: true,
+    }],
     feed: [{
       id: 'feed-1',
       type: 'assistant',
@@ -75,6 +102,12 @@ describe('Session workbench state', () => {
       totalTokens: 200,
     })
     expect(second.managedSessions()[0].feed[0].text).toBe('Persistent response')
+    expect(second.managedSessions()[0].workflows[0]).toMatchObject({
+      status: 'interrupted',
+      canPause: false,
+      canResume: false,
+      canStop: false,
+    })
     expect((await fs.stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600)
   })
 

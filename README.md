@@ -70,6 +70,18 @@ required.
 
 </td>
 </tr>
+<tr>
+<td colspan="2" valign="top">
+
+**⌁ Cross-session workflow command field**
+
+Grok Build v0.2.112+ workflow updates become one live run field: phase
+progression, agent roster, budget use, failures, results, and safe Pause,
+Resume, or Stop controls. Failed runs expose recovery only when Grok reports
+that the current process can resume them.
+
+</td>
+</tr>
 </table>
 
 ## Architecture
@@ -159,6 +171,27 @@ cancels pending permissions, preserves final tool updates, surfaces a retry when
 Grok does not confirm, and leaves the lane ready to resume. Rename and archive
 actions are local Grok UI overlays; Grok’s own session files are never rewritten.
 
+## Workflow runs
+
+The Runs view listens for Grok’s structured `workflow_updated` notifications on
+UI-managed ACP sessions and aggregates them across the command field. Each run
+can show:
+
+- current status, objective, phase progression, and latest event
+- per-agent state and current work detail
+- active, used, reserved, and total agent allocation
+- pause context and final result summary
+- Pause, Resume, and Stop controls when the run state supports them
+
+Controls use Grok’s documented `/workflow pause|resume|stop <display-name>`
+commands and accept only validated display handles. Persisted snapshots remain
+visible after a dashboard restart, but their controls are disabled because Grok
+only resumes failed or paused workflows inside the process that owns them.
+
+Grok UI intentionally does not scrape the terminal dashboard or imply visibility
+into historical CLI-only workflow runs. A run appears after a UI-managed session
+emits its first workflow update.
+
 ## Themes
 
 Two complete visual systems ship with the dashboard:
@@ -229,6 +262,7 @@ npm run serve     # Serve an existing production build without rebuilding
 ```text
 server/
   grok-controller.ts      ACP lifecycle, prompts, approvals, cancellation
+  workflow-state.ts       workflow notification projection and safe controls
   live-monitor.ts         active process and runtime event projection
   grok-store.ts           historical metadata aggregation
   session-reader.ts       bounded conversation and tool timeline
@@ -237,6 +271,7 @@ server/
   security.ts             local and remote access gate
 src/
   views/ControlView.tsx   command deck and approval queue
+  views/WorkflowsView.tsx cross-session workflow command field
   views/ChangesView.tsx   live repository change workbench
   views/SessionWorkbench.tsx
                             session timeline and operations

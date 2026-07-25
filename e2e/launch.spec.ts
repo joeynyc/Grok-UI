@@ -134,6 +134,44 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('20')).toBeVisible()
   })
 
+  test('surfaces workflow telemetry and recovers a failed run across sessions', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /Control/ }).click()
+
+    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.getByLabel('WORKSPACE').fill(workspace)
+    await page.getByLabel('INSTRUCTION').fill('Start workflow fixture')
+    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+
+    await page.getByRole('button', { name: /Runs/ }).click()
+    await expect(page.getByRole('heading', { name: /Every run/ })).toBeVisible()
+    await expect(page.getByText('release-check').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Recovery point available')).toBeVisible()
+    await expect(page.getByText('Verify release')).toBeVisible()
+    await expect(page.getByText('Verifier').first()).toBeVisible()
+    await expect(page.getByText('4 / 8')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Resume run' }).click()
+    await expect(page.getByText('Release verified and ready to ship.')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.workflow-mission-head').getByText('completed')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeDisabled()
+
+    const snapshot = await (await page.request.get('/api/control')).json()
+    expect(snapshot.workflows).toHaveLength(1)
+    expect(snapshot.workflows[0]).toMatchObject({
+      displayName: 'release-check',
+      status: 'completed',
+      agentsUsed: 5,
+      resultSummary: 'Release verified and ready to ship.',
+    })
+
+    await page.getByRole('button', { name: 'Privacy' }).click()
+    const privateBody = await page.locator('body').innerText()
+    expect(privateBody).not.toContain('release-check')
+    expect(privateBody).not.toContain('Ship a verified release')
+    expect(privateBody).not.toContain('Release verified and ready to ship.')
+  })
+
   test('cancels cleanly while a permission decision is pending', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /Control/ }).click()
