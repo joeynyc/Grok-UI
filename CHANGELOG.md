@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.2 — 2026-07-26
+
 - Renamed the session “Workbench” entry points to “Open Session” and labeled
   the focused agent view “Session Console,” with a concise explanation of its
   live chat, activity, and change-review capabilities.
