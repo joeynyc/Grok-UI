@@ -32,6 +32,7 @@ interface LiveUsage {
   contextSize: number
   costAmount: number
   costCurrency: string
+  costTelemetryAvailable: boolean
 }
 
 const MAX_TAIL_BYTES = 512 * 1024
@@ -197,7 +198,13 @@ function feedFromUpdates(updates: ParsedUpdate[]): LiveFeedItem[] {
 function usageFromUpdates(updates: ParsedUpdate[]): LiveUsage {
   const usage = [...updates].reverse().find(({ update }) => asString(update.sessionUpdate) === 'usage_update')?.update
   if (!usage) {
-    return { contextUsed: 0, contextSize: 0, costAmount: 0, costCurrency: '' }
+    return {
+      contextUsed: 0,
+      contextSize: 0,
+      costAmount: 0,
+      costCurrency: '',
+      costTelemetryAvailable: false,
+    }
   }
   const cost = asObject(usage.cost)
   return {
@@ -205,6 +212,7 @@ function usageFromUpdates(updates: ParsedUpdate[]): LiveUsage {
     contextSize: asNumber(usage.size),
     costAmount: asNumber(cost.amount),
     costCurrency: asString(cost.currency),
+    costTelemetryAvailable: Object.keys(cost).length > 0,
   }
 }
 

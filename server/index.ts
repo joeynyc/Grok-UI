@@ -8,9 +8,17 @@ import { SecurityGate } from './security.js'
 import { WorkspaceInspector } from './workspace-inspector.js'
 import { SessionStateStore } from './session-state.js'
 import { mergeSessionFeed, SessionReader } from './session-reader.js'
-import type { ControlSession, LiveAgent, SessionRow } from './types.js'
+import type {
+  ControlSession,
+  LiveAgent,
+  SessionRow,
+  UsageGroupDimension,
+  UsagePeriod,
+  UsageScope,
+} from './types.js'
 import { APP_VERSION } from './app-version.js'
 import { inspectSetup } from './setup-diagnostics.js'
+import { UsageLedger } from './usage-ledger.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
@@ -21,19 +29,46 @@ const controller = new GrokController(sessionState)
 await controller.restore()
 const workspaceInspector = new WorkspaceInspector()
 const sessionReader = new SessionReader(store.grokHome)
+const usageLedger = new UsageLedger(sessionState)
 const port = Number(process.env.PORT || 4310)
 const host = process.env.HOST || '127.0.0.1'
 const security = new SecurityGate(host)
 const eventClients = new Set<express.Response>()
+let usageSyncTimer: NodeJS.Timeout | null = null
 
 function broadcast(event: string, payload: unknown) {
   const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
   eventClients.forEach((client) => client.write(frame))
 }
 
-liveMonitor.on('live', (payload) => broadcast('live', payload))
+async function syncUsage(): Promise<void> {
+  await usageLedger.sync({
+    sessions: (await store.dashboard()).sessions,
+    live: liveMonitor.snapshot().agents,
+    managed: controller.snapshot().sessions,
+  })
+}
+
+function scheduleUsageSync(): void {
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
+  usageSyncTimer = setTimeout(() => {
+    usageSyncTimer = null
+    void syncUsage().catch(() => {
+      // A later session or telemetry event will retry the durable snapshot.
+    })
+  }, 220)
+  usageSyncTimer.unref()
+}
+
+liveMonitor.on('live', (payload) => {
+  broadcast('live', payload)
+  scheduleUsageSync()
+})
 liveMonitor.on('dashboard', (payload) => broadcast('dashboard', payload))
-controller.on('control', (payload) => broadcast('control', payload))
+controller.on('control', (payload) => {
+  broadcast('control', payload)
+  scheduleUsageSync()
+})
 workspaceInspector.on('change', (payload) => broadcast('workspace', payload))
 
 app.disable('x-powered-by')
@@ -63,6 +98,38 @@ app.get('/api/dashboard', async (request, response, next) => {
 
 app.get('/api/live', (_request, response) => {
   response.json(liveMonitor.snapshot())
+})
+
+const USAGE_PERIODS = new Set<UsagePeriod>(['24h', '7d', '30d', '90d', 'all'])
+const USAGE_SCOPES = new Set<UsageScope>(['sessions', 'workflow-agents', 'all'])
+const USAGE_GROUPS = new Set<UsageGroupDimension>(['project', 'model', 'session', 'agent'])
+
+app.get('/api/usage', async (request, response, next) => {
+  try {
+    const period = typeof request.query.period === 'string' ? request.query.period : '30d'
+    const scope = typeof request.query.scope === 'string' ? request.query.scope : 'sessions'
+    const groupBy = typeof request.query.groupBy === 'string' ? request.query.groupBy : 'project'
+    if (!USAGE_PERIODS.has(period as UsagePeriod)) {
+      response.status(400).json({ error: 'Usage period must be 24h, 7d, 30d, 90d, or all.' })
+      return
+    }
+    if (!USAGE_SCOPES.has(scope as UsageScope)) {
+      response.status(400).json({ error: 'Usage scope must be sessions, workflow-agents, or all.' })
+      return
+    }
+    if (!USAGE_GROUPS.has(groupBy as UsageGroupDimension)) {
+      response.status(400).json({ error: 'Usage grouping must be project, model, session, or agent.' })
+      return
+    }
+    await syncUsage()
+    response.json(usageLedger.report({
+      period: period as UsagePeriod,
+      scope: scope as UsageScope,
+      groupBy: groupBy as UsageGroupDimension,
+    }))
+  } catch (error) {
+    next(error)
+  }
 })
 
 let setupCache: { expiresAt: number; payload: Awaited<ReturnType<typeof inspectSetup>> } | null = null
@@ -380,6 +447,7 @@ app.use((
 })
 
 await liveMonitor.start()
+await syncUsage()
 
 export const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
   const listener = app.listen(port, host, () => resolve(listener))
@@ -397,6 +465,7 @@ console.log('Local Grok state linked')
 console.log(`Remote authentication ${security.authRequired ? 'enabled' : 'not required on loopback'}`)
 
 async function shutdown() {
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
   server.close()
   await Promise.all([liveMonitor.stop(), controller.stop(), workspaceInspector.close()])
   process.exit(0)

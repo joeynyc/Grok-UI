@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Started the v0.9 Runtime Intelligence milestone with a persistent,
+  provenance-aware usage ledger built on the existing session and workflow
+  token telemetry.
+- Added time-windowed usage reporting by project, model, session, and agent,
+  with separate session and workflow-agent scopes to prevent silent double
+  counting.
+- Added explicit Grok-reported, derived, incomplete, and unavailable labels,
+  including a guard that never treats live context occupancy as cumulative
+  token usage.
+- Added a privacy-aware Usage view, authenticated usage API, atomic v1-to-v2
+  state migration, and coverage for persistence and mixed telemetry.
+
 ## 0.8.2 — 2026-07-26
 
 - Renamed the session “Workbench” entry points to “Open Session” and labeled

@@ -200,6 +200,17 @@ Grok UI intentionally does not scrape the terminal dashboard or imply visibility
 into historical CLI-only workflow runs. A run appears after a UI-managed session
 emits its first workflow update.
 
+## Usage ledger
+
+The v0.9 Usage view extends the existing token and cost telemetry with a
+durable local ledger. It reports by project, model, session, agent, and time
+period, while keeping session totals separate from workflow-agent detail.
+
+Every value says whether it is Grok-reported, derived, incomplete, or
+unavailable. Grok UI does not substitute context-window occupancy for
+cumulative CLI token usage, and explicitly mixed observation scopes are never
+presented as precise spend.
+
 ## Themes
 
 Two complete visual systems ship with the dashboard:
@@ -272,6 +283,7 @@ server/
   grok-controller.ts      ACP lifecycle, prompts, approvals, cancellation
   workflow-state.ts       workflow notification projection and safe controls
   live-monitor.ts         active process and runtime event projection
+  usage-ledger.ts         provenance-aware durable usage reporting
   grok-store.ts           historical metadata aggregation
   session-reader.ts       bounded conversation and tool timeline
   session-state.ts        durable managed lanes and local annotations
@@ -280,6 +292,7 @@ server/
 src/
   views/ControlView.tsx   command deck and approval queue
   views/WorkflowsView.tsx cross-session workflow command field
+  views/UsageView.tsx     time- and dimension-based usage ledger
   views/ChangesView.tsx   live repository change workbench
   views/SessionWorkbench.tsx
                             session timeline and operations

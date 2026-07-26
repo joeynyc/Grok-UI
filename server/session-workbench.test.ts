@@ -39,8 +39,10 @@ function managedSession(state: ControlSession['state'] = 'working'): ControlSess
     inputTokens: 120,
     outputTokens: 80,
     totalTokens: 200,
+    tokenTelemetryAvailable: true,
     costAmount: 0.02,
     costCurrency: 'USD',
+    costTelemetryAvailable: true,
     workflows: [{
       id: 'workflow-durable-1',
       controlHandle: 'durable-run',

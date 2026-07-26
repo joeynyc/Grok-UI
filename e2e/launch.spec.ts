@@ -296,6 +296,37 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByRole('button', { name: 'Next agent page' })).toHaveCount(0)
   })
 
+  test('persists provenance-aware usage and redacts its project report', async ({ page }) => {
+    await page.goto('/')
+    const created = await page.request.post('/api/control/sessions', {
+      data: {
+        cwd: workspace,
+        prompt: 'Start workflow fixture for usage ledger verification',
+      },
+    })
+    expect(created.ok()).toBe(true)
+    const session = await created.json()
+
+    await expect.poll(async () => {
+      const report = await (await page.request.get('/api/usage?period=all&scope=sessions&groupBy=session')).json()
+      return report.entries.find((entry: { sessionId: string }) => entry.sessionId === session.id)?.totalTokens
+    }, { timeout: 10_000 }).toEqual({
+      value: 16,
+      source: 'grok-reported',
+    })
+
+    await page.getByRole('button', { name: /Usage/ }).click()
+    await expect(page.getByRole('heading', { name: /Know what was used/ })).toBeVisible()
+    await expect(page.getByText('Persistent usage ledger', { exact: true })).toBeVisible()
+    await expect(page.getByText('Telemetry coverage')).toBeVisible()
+    await expect(page.locator('.usage-ledger')).toContainText('secret-client')
+    await expect(page.locator('.usage-ledger')).toContainText(/derived|incomplete/)
+
+    await page.getByRole('button', { name: 'Privacy' }).click()
+    await expect(page.locator('.usage-ledger')).not.toContainText('secret-client')
+    await expect(page.locator('.usage-ledger')).toContainText(/Workspace [A-Z0-9]{3}/)
+  })
+
   test('cancels cleanly while a permission decision is pending', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /Control/ }).click()

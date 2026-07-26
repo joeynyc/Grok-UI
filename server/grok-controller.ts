@@ -69,8 +69,10 @@ function sessionSeed(id: string, cwd: string, prompt: string, model = ''): Contr
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
+    tokenTelemetryAvailable: false,
     costAmount: 0,
     costCurrency: '',
+    costTelemetryAvailable: false,
     feed: [],
     workflows: [],
   }
@@ -611,6 +613,7 @@ export class GrokController extends EventEmitter {
       inputTokens: response.usage?.inputTokens || session.inputTokens,
       outputTokens: response.usage?.outputTokens || session.outputTokens,
       totalTokens: response.usage?.totalTokens || session.totalTokens,
+      tokenTelemetryAvailable: Boolean(response.usage) || session.tokenTelemetryAvailable,
     })
     this.emitSnapshot()
   }
@@ -657,6 +660,7 @@ export class GrokController extends EventEmitter {
     if (update.sessionUpdate === 'usage_update') {
       next.costAmount = update.cost?.amount || next.costAmount
       next.costCurrency = update.cost?.currency || next.costCurrency
+      next.costTelemetryAvailable = Boolean(update.cost) || next.costTelemetryAvailable
     }
     if (
       (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'agent_message_chunk')

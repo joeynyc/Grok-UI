@@ -28,6 +28,7 @@ import {
   TimerReset,
   ToolCase,
   Workflow,
+  WalletCards,
   X,
   Zap,
   type LucideIcon,
@@ -52,11 +53,13 @@ import { ChangesView } from './views/ChangesView'
 import { ControlView } from './views/ControlView'
 import { SessionWorkbench } from './views/SessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
+import { UsageView } from './views/UsageView'
 import { PrivacyProvider, usePrivacy } from './privacy'
 import packageJson from '../package.json'
 
 interface NavItem {
   id: ViewId
+  index: string
   label: string
   eyebrow: string
   icon: LucideIcon
@@ -64,16 +67,17 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'live', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
-  { id: 'control', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
-  { id: 'runs', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '3' },
-  { id: 'changes', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '4' },
-  { id: 'overview', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
-  { id: 'sessions', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
-  { id: 'activity', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
-  { id: 'library', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
-  { id: 'memory', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
-  { id: 'themes', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
+  { id: 'live', index: '01', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
+  { id: 'control', index: '02', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
+  { id: 'runs', index: '03', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '3' },
+  { id: 'changes', index: '04', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '4' },
+  { id: 'overview', index: '05', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
+  { id: 'sessions', index: '06', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
+  { id: 'activity', index: '07', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
+  { id: 'usage', index: '08', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: 'u' },
+  { id: 'library', index: '09', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
+  { id: 'memory', index: '10', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
+  { id: 'themes', index: '11', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
 ]
 
 type ThemeId = 'operator' | 'event-horizon'
@@ -401,6 +405,7 @@ function App() {
               />
             )}
             {view === 'activity' && <ActivityView data={data} />}
+            {view === 'usage' && <UsageView />}
             {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
             {view === 'memory' && <MemoryView data={data} />}
             {view === 'themes' && <ThemesView active={theme} onSelect={setTheme} />}
@@ -466,7 +471,7 @@ function ThemesView({
   return (
     <>
       <PageIntro
-        index="10"
+        index="11"
         eyebrow="Visual systems"
         title={<>Choose your<br /><em>command atmosphere.</em></>}
         description="Switch the entire dashboard aesthetic without changing your data, sessions, or workflow. Your selection stays active on this device."
@@ -557,7 +562,7 @@ function Sidebar({
                 className={`nav-item ${active === item.id ? 'is-active' : ''}`}
                 onClick={() => onNavigate(item.id)}
               >
-                <span className="nav-index">{item.shortcut === '0' ? '10' : `0${item.shortcut}`}</span>
+                <span className="nav-index">{item.index}</span>
                 <Icon size={17} strokeWidth={1.7} />
                 <span className="nav-copy">
                   <strong>{item.label}</strong>
@@ -1518,7 +1523,7 @@ function LibraryView({
   return (
     <>
       <PageIntro
-        index="08"
+        index="09"
         eyebrow="Capability library"
         title={<>What Grok can<br /><em>reach for.</em></>}
         description="The local skills, agent profiles, and marketplace packages shaping every run."
@@ -1557,7 +1562,7 @@ function MemoryView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="09"
+        index="10"
         eyebrow="Durable recall"
         title={<>Memory without<br /><em>the mystery.</em></>}
         description="A privacy-conscious inventory of Grok’s durable Markdown memory. Content stays on disk and is not rendered here."
@@ -1606,7 +1611,7 @@ function PageIntro({
 }) {
   return (
     <header className="page-intro">
-      <div className="intro-index">{index} / 10</div>
+      <div className="intro-index">{index} / 11</div>
       <div>
         <div className="kicker">{eyebrow}</div>
         <h1>{title}</h1>

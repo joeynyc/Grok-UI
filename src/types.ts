@@ -1,4 +1,4 @@
-export type ViewId = 'live' | 'control' | 'runs' | 'changes' | 'overview' | 'sessions' | 'activity' | 'library' | 'memory' | 'themes'
+export type ViewId = 'live' | 'control' | 'runs' | 'changes' | 'overview' | 'sessions' | 'activity' | 'usage' | 'library' | 'memory' | 'themes'
 export type SessionStatus = 'live' | 'recent' | 'idle' | 'attention'
 
 export interface SessionRow {
@@ -132,6 +132,7 @@ export interface LiveAgent {
   contextSize: number
   costAmount: number
   costCurrency: string
+  costTelemetryAvailable: boolean
   feed: LiveFeedItem[]
 }
 
@@ -224,8 +225,10 @@ export interface ControlSession {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  tokenTelemetryAvailable: boolean
   costAmount: number
   costCurrency: string
+  costTelemetryAvailable: boolean
   feed: LiveFeedItem[]
   workflows: WorkflowRun[]
 }
@@ -304,4 +307,62 @@ export interface SessionWorkbenchData {
   control: ControlSession | null
   permissions: ControlPermission[]
   managed: boolean
+}
+
+export type UsageSource = 'grok-reported' | 'derived' | 'incomplete' | 'unavailable'
+export type UsageEntryKind = 'managed-session' | 'cli-session' | 'workflow-agent'
+export type UsageGroupDimension = 'project' | 'model' | 'session' | 'agent'
+export type UsagePeriod = '24h' | '7d' | '30d' | '90d' | 'all'
+export type UsageScope = 'sessions' | 'workflow-agents' | 'all'
+
+export interface UsageMetric {
+  value: number | null
+  source: UsageSource
+}
+
+export interface UsageCostMetric extends UsageMetric {
+  currency: string
+}
+
+export interface UsageLedgerEntry {
+  id: string
+  kind: UsageEntryKind
+  sessionId: string
+  sessionTitle: string
+  workflowId: string
+  project: string
+  cwd: string
+  model: string
+  agent: string
+  startedAt: string
+  updatedAt: string
+  inputTokens: UsageMetric
+  outputTokens: UsageMetric
+  totalTokens: UsageMetric
+  cost: UsageCostMetric
+}
+
+export interface UsageReportGroup {
+  key: string
+  label: string
+  entries: number
+  sessions: number
+  inputTokens: UsageMetric
+  outputTokens: UsageMetric
+  totalTokens: UsageMetric
+  costs: UsageCostMetric[]
+  updatedAt: string
+}
+
+export interface UsageReport {
+  generatedAt: string
+  period: UsagePeriod
+  scope: UsageScope
+  from: string
+  to: string
+  groupBy: UsageGroupDimension
+  entries: UsageLedgerEntry[]
+  totals: UsageReportGroup
+  groups: UsageReportGroup[]
+  coverage: Record<UsageSource, number>
 }

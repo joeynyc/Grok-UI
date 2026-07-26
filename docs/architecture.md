@@ -24,11 +24,30 @@ The connection supports:
 
 Each permission request stays pending as a server-side promise until an authenticated user selects one of Grok’s options or cancels the turn. The browser cannot manufacture an option that Grok did not advertise.
 
+## Usage plane
+
+`UsageLedger` normalizes the token and cost telemetry already owned by
+`LiveMonitor`, `GrokController`, and the workflow projection. It stores
+cumulative observations rather than replaying or duplicating raw events.
+
+Every metric carries provenance: `grok-reported`, `derived`, `incomplete`, or
+`unavailable`. Session totals and workflow-agent detail are separate reporting
+scopes because they can describe overlapping work. Live context occupancy is
+never treated as cumulative token usage.
+
+Reports are time-bounded and can group by project, model, session, or agent.
+The ledger is local-only and uses the same authenticated API boundary as the
+rest of the dashboard.
+
 ## Durable UI state
 
 `SessionStateStore` atomically persists Grok UI-owned annotations and managed ACP lanes to `~/.grok-ui/state.json` with user-only file permissions. It never mutates Grok’s session directories. Rename and archive are therefore reversible UI overlays.
 
-Managed lanes retain a bounded event tail and usage totals. If the server exits during a turn, the lane restores as idle with a `server_restarted` stop reason; the user can explicitly resume it through `session/load` and `session/prompt`.
+Managed lanes retain a bounded event tail and usage totals. The same versioned
+state file retains at most 10,000 normalized usage observations and migrates
+older state in place. If the server exits during a turn, the lane restores as
+idle with a `server_restarted` stop reason; the user can explicitly resume it
+through `session/load` and `session/prompt`.
 
 ## Workspace plane
 

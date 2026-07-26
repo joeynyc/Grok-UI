@@ -1,7 +1,14 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ControlSession, SessionRow, WorkflowRun } from './types.js'
+import type {
+  ControlSession,
+  SessionRow,
+  UsageLedgerEntry,
+  UsageMetric,
+  UsageSource,
+  WorkflowRun,
+} from './types.js'
 import { interruptRestoredWorkflow } from './workflow-state.js'
 
 export interface SessionAnnotation {
@@ -11,19 +18,83 @@ export interface SessionAnnotation {
 }
 
 interface PersistedState {
-  version: 1
+  version: 2
   sessions: Record<string, SessionAnnotation>
   managedSessions: ControlSession[]
+  usageEntries: UsageLedgerEntry[]
 }
 
 const EMPTY_STATE: PersistedState = {
-  version: 1,
+  version: 2,
   sessions: {},
   managedSessions: [],
+  usageEntries: [],
 }
+
+const USAGE_SOURCES = new Set<UsageSource>([
+  'grok-reported',
+  'derived',
+  'incomplete',
+  'unavailable',
+])
+const MAX_USAGE_ENTRIES = 10_000
 
 function safeId(id: string): boolean {
   return Boolean(id) && /^[a-zA-Z0-9-]+$/.test(id)
+}
+
+function boundedString(value: unknown, limit = 512): string {
+  return typeof value === 'string' ? value.slice(0, limit) : ''
+}
+
+function normalizedDate(value: unknown): string {
+  const parsed = typeof value === 'string' ? new Date(value) : new Date(Number.NaN)
+  return Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString()
+}
+
+function normalizeUsageMetric(value: unknown): UsageMetric {
+  if (!value || typeof value !== 'object') return { value: null, source: 'unavailable' }
+  const metric = value as Partial<UsageMetric>
+  const source = USAGE_SOURCES.has(metric.source as UsageSource)
+    ? metric.source as UsageSource
+    : 'unavailable'
+  const numeric = typeof metric.value === 'number' && Number.isFinite(metric.value) && metric.value >= 0
+    ? metric.value
+    : null
+  return {
+    value: numeric,
+    source: numeric === null ? 'unavailable' : source,
+  }
+}
+
+function normalizeUsageEntry(value: unknown): UsageLedgerEntry | null {
+  if (!value || typeof value !== 'object') return null
+  const item = value as Partial<UsageLedgerEntry>
+  const id = boundedString(item.id)
+  const sessionId = boundedString(item.sessionId)
+  if (!id || !sessionId || !/^[a-zA-Z0-9:._-]+$/.test(id)) return null
+  if (!['managed-session', 'cli-session', 'workflow-agent'].includes(item.kind || '')) return null
+  const cost = normalizeUsageMetric(item.cost)
+  return {
+    id,
+    kind: item.kind as UsageLedgerEntry['kind'],
+    sessionId,
+    sessionTitle: boundedString(item.sessionTitle, 256),
+    workflowId: boundedString(item.workflowId),
+    project: boundedString(item.project, 256),
+    cwd: boundedString(item.cwd, 2_048),
+    model: boundedString(item.model, 256),
+    agent: boundedString(item.agent, 256),
+    startedAt: normalizedDate(item.startedAt),
+    updatedAt: normalizedDate(item.updatedAt),
+    inputTokens: normalizeUsageMetric(item.inputTokens),
+    outputTokens: normalizeUsageMetric(item.outputTokens),
+    totalTokens: normalizeUsageMetric(item.totalTokens),
+    cost: {
+      ...cost,
+      currency: boundedString(item.cost?.currency, 16).toUpperCase(),
+    },
+  }
 }
 
 function normalizeControlSession(value: unknown): ControlSession | null {
@@ -52,8 +123,15 @@ function normalizeControlSession(value: unknown): ControlSession | null {
     inputTokens: Number(item.inputTokens) || 0,
     outputTokens: Number(item.outputTokens) || 0,
     totalTokens: Number(item.totalTokens) || 0,
+    tokenTelemetryAvailable: item.tokenTelemetryAvailable === true
+      || Number(item.inputTokens) > 0
+      || Number(item.outputTokens) > 0
+      || Number(item.totalTokens) > 0,
     costAmount: Number(item.costAmount) || 0,
     costCurrency: typeof item.costCurrency === 'string' ? item.costCurrency : '',
+    costTelemetryAvailable: item.costTelemetryAvailable === true
+      || Number(item.costAmount) > 0
+      || Boolean(item.costCurrency),
     feed: Array.isArray(item.feed) ? item.feed.slice(-120) : [],
     workflows: Array.isArray(item.workflows)
       ? item.workflows
@@ -92,10 +170,16 @@ export class SessionStateStore {
         }
       })
       this.state = {
-        version: 1,
+        version: 2,
         sessions: annotations,
         managedSessions: Array.isArray(raw.managedSessions)
           ? raw.managedSessions.map(normalizeControlSession).filter((item): item is ControlSession => item !== null)
+          : [],
+        usageEntries: Array.isArray(raw.usageEntries)
+          ? raw.usageEntries
+            .map(normalizeUsageEntry)
+            .filter((item): item is UsageLedgerEntry => item !== null)
+            .slice(0, MAX_USAGE_ENTRIES)
           : [],
       }
     } catch {
@@ -158,6 +242,38 @@ export class SessionStateStore {
         agents: workflow.agents.map((agent) => ({ ...agent })),
       })),
     }))
+    await this.persist()
+  }
+
+  usageEntries(): UsageLedgerEntry[] {
+    return this.state.usageEntries.map((entry) => ({
+      ...entry,
+      inputTokens: { ...entry.inputTokens },
+      outputTokens: { ...entry.outputTokens },
+      totalTokens: { ...entry.totalTokens },
+      cost: { ...entry.cost },
+    }))
+  }
+
+  async mergeUsageEntries(entries: UsageLedgerEntry[]): Promise<void> {
+    const previousSnapshot = JSON.stringify(this.state.usageEntries)
+    const merged = new Map(this.state.usageEntries.map((entry) => [entry.id, entry]))
+    entries.forEach((entry) => {
+      const normalized = normalizeUsageEntry(entry)
+      if (!normalized) return
+      const previous = merged.get(normalized.id)
+      merged.set(normalized.id, {
+        ...previous,
+        ...normalized,
+        startedAt: previous && previous.startedAt < normalized.startedAt
+          ? previous.startedAt
+          : normalized.startedAt,
+      })
+    })
+    this.state.usageEntries = [...merged.values()]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+      .slice(0, MAX_USAGE_ENTRIES)
+    if (JSON.stringify(this.state.usageEntries) === previousSnapshot) return
     await this.persist()
   }
 

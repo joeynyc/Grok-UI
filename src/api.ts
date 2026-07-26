@@ -6,6 +6,10 @@ import type {
   SessionWorkbenchData,
   LiveSnapshot,
   SetupStatus,
+  UsageGroupDimension,
+  UsagePeriod,
+  UsageReport,
+  UsageScope,
   WorkflowControlAction,
   WorkspaceDiff,
   WorkspaceSnapshot,
@@ -27,6 +31,20 @@ export async function getDashboard(force = false): Promise<DashboardPayload> {
 export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   const response = await fetch('/api/live', { headers: { Accept: 'application/json' } })
   return json<LiveSnapshot>(response, 'Live runtime request failed')
+}
+
+export async function getUsageReport(input: {
+  period: UsagePeriod
+  scope: UsageScope
+  groupBy: UsageGroupDimension
+}): Promise<UsageReport> {
+  const query = new URLSearchParams(input)
+  return json(
+    await fetch(`/api/usage?${query.toString()}`, {
+      headers: { Accept: 'application/json' },
+    }),
+    'Usage ledger request failed',
+  )
 }
 
 export async function getSetupStatus(force = false): Promise<SetupStatus> {

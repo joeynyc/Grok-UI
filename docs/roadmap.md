@@ -19,10 +19,14 @@ The roadmap extends those foundations instead of replacing them.
 - Inspect process trees, open ports, test state, databases, local services, and
   external tool calls.
 - Persist usage across CLI sessions, managed sessions, workflows, projects,
-  models, agents, and time periods.
+  models, agents, and time periods. The provenance-aware ledger and reporting
+  API are now implemented on the v0.9 development branch.
 - Identify each usage value as Grok-reported, derived, incomplete, or
-  unavailable.
+  unavailable. The first Usage view now exposes those labels directly.
 - Add optional budgets, alerts, and exports.
+
+The staged design, security constraints, and release gate are tracked in
+[`v0.9-runtime-intelligence.md`](./v0.9-runtime-intelligence.md).
 
 ## v0.10 — Multi-machine monitoring
 
