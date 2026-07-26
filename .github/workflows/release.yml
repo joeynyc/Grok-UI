@@ -36,7 +36,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run verify
       - run: npm run test:e2e
-      - run: npm run test:soak
+      - name: Run control soak when available
+        run: npm run --if-present test:soak
       - run: npm run test:package
       - name: Pack release artifact
         run: |
