@@ -121,6 +121,19 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText(/PID \d+/).first()).toBeVisible()
   })
 
+  test('reconnects the browser event stream after a server interruption', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /Overview/ }).click()
+    await expect(page.getByText('EVENT STREAM LINKED')).toBeVisible()
+
+    const disconnected = await page.request.post('/api/test/disconnect-events')
+    expect(disconnected.ok()).toBe(true)
+    expect((await disconnected.json()).disconnected).toBeGreaterThan(0)
+    await expect(page.getByText('EVENT STREAM RECONNECTING')).toBeVisible({ timeout: 10_000 })
+
+    await expect(page.getByText('EVENT STREAM LINKED')).toBeVisible({ timeout: 15_000 })
+  })
+
   test('opens a live agent in the clearly labeled Session Console', async ({ page }) => {
     await page.goto('/')
 
@@ -167,6 +180,50 @@ test.describe.serial('public launch path', () => {
     await page.getByRole('button', { name: 'Allow once' }).click()
     await expect(page.getByText('Permission approved and command completed.')).toBeVisible()
     await expect(page.getByText('20')).toBeVisible()
+  })
+
+  test('recovers the ACP control channel after its child process exits', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /Control/ }).click()
+
+    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    const response = await page.request.post('/api/control/sessions', {
+      data: {
+        cwd: workspace,
+        prompt: 'Crash control process fixture',
+      },
+    })
+    expect(response.ok()).toBe(true)
+    const created = await response.json()
+
+    await expect.poll(async () => {
+      const snapshot = await (await page.request.get('/api/control')).json()
+      return {
+        connected: snapshot.connected,
+        disconnected: Boolean(snapshot.lastDisconnectedAt),
+        state: snapshot.sessions.find((item: { id: string }) => item.id === created.id)?.state,
+      }
+    }, { timeout: 15_000 }).toEqual({
+      connected: true,
+      disconnected: true,
+      state: 'failed',
+    })
+    const interruptedLane = page.locator('.lane-card').filter({ hasText: 'Crash control process fixture' })
+    await expect(interruptedLane.getByText('CONTROL INTERRUPTED')).toBeVisible()
+    await expect(interruptedLane.getByText('Simulated ACP child crash', { exact: false })).toBeVisible()
+    await expect(interruptedLane.getByRole('button', { name: 'Resume' })).toBeVisible()
+
+    const resumed = await page.request.post(`/api/control/sessions/${created.id}/prompt`, {
+      data: {
+        cwd: workspace,
+        prompt: 'Verify recovered control session',
+      },
+    })
+    expect(resumed.ok()).toBe(true)
+    await expect.poll(async () => {
+      const snapshot = await (await page.request.get('/api/control')).json()
+      return snapshot.sessions.find((item: { id: string }) => item.id === created.id)?.state
+    }, { timeout: 10_000 }).toBe('idle')
   })
 
   test('surfaces workflow telemetry and recovers a failed run across sessions', async ({ page }) => {

@@ -27,5 +27,6 @@ process.env.HOST = '127.0.0.1'
 process.env.GROK_HOME = grokHome
 process.env.GROK_UI_STATE_DIR = stateDirectory
 process.env.GROK_BIN = path.join(projectRoot, 'scripts', 'fake-grok-e2e.mjs')
+process.env.GROK_UI_E2E = '1'
 
 await import('../dist-server/index.js')

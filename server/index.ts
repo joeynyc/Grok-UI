@@ -355,6 +355,15 @@ app.get('/api/events', (request, response) => {
   })
 })
 
+if (process.env.GROK_UI_E2E === '1') {
+  app.post('/api/test/disconnect-events', (_request, response) => {
+    response.json({ disconnected: eventClients.size })
+    setImmediate(() => {
+      eventClients.forEach((client) => client.end())
+    })
+  })
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const staticDir = path.join(root, 'dist')
 app.use(express.static(staticDir))

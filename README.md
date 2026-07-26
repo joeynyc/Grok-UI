@@ -134,6 +134,9 @@ npm start
 `npm start` creates the production build automatically when it is missing.
 For file-watching development, use `npm run dev`.
 
+The versioned delivery plan is maintained in
+[`docs/roadmap.md`](docs/roadmap.md).
+
 The first launch opens a live setup diagnostic that distinguishes a missing
 CLI, an unauthenticated account, and a profile that simply has not created its
 first session yet. Machine-specific paths are never included in those checks.

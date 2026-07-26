@@ -5,6 +5,14 @@
 - Renamed the session “Workbench” entry points to “Open Session” and labeled
   the focused agent view “Session Console,” with a concise explanation of its
   live chat, activity, and change-review capabilities.
+- Added automatic ACP control-channel recovery with exponential backoff,
+  interrupted-session diagnostics, and safe session reload after reconnection.
+- Added forced browser-stream and ACP-child recovery coverage.
+- Made local browser tests build production assets before launching, preventing
+  stale ignored output from masking source regressions.
+- Added a 75-second managed-session soak to the tagged release gate.
+- Added npm trusted-publishing support, manual publication for an existing tag,
+  and a release guard that rejects tag/package version mismatches.
 
 ## 0.8.1 — 2026-07-25
 

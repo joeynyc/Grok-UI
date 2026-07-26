@@ -48,6 +48,10 @@ function uniqueWorkspaces(data: DashboardPayload, live: LiveSnapshot | null): st
 function cancellationTime(session: ControlSession): string {
   const value = session.cancelledAt || session.cancelRequestedAt
   if (!value) return '—'
+  return controlTime(value)
+}
+
+function controlTime(value: string): string {
   return new Date(value).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -176,7 +180,13 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
       <section className="control-health-strip">
         <div>
           <span className={`status-dot ${control?.connected ? 'is-live' : ''}`} />
-          <strong>{control?.connected ? 'ACP CONTROL LINKED' : control?.starting ? 'STARTING CONTROL' : 'CONTROL OFFLINE'}</strong>
+          <strong>{control?.connected
+            ? 'ACP CONTROL LINKED'
+            : control?.reconnecting
+              ? `RECONNECTING CONTROL · ${control.reconnectAttempt}`
+              : control?.starting
+                ? 'STARTING CONTROL'
+                : 'CONTROL OFFLINE'}</strong>
           <small>{control?.agentName || 'Grok'} {control?.agentVersion}</small>
         </div>
         <div><span>MANAGED LANES</span><strong>{control?.sessions.length || 0}</strong></div>
@@ -374,7 +384,10 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                       <CircleStop size={15} /> Retry stop
                     </button>
                   )}
-                  {['idle', 'cancelled'].includes(session.state) && (
+                  {(
+                    ['idle', 'cancelled'].includes(session.state)
+                    || (session.state === 'failed' && session.stopReason === 'control_disconnected')
+                  ) && (
                     <button className="resume-lane" onClick={() => resume(session)}>
                       <Radio size={15} /> Resume
                     </button>
@@ -404,6 +417,16 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                     </div>
                     <div><span>TIME</span><strong>{cancellationTime(session)}</strong></div>
                     <div><span>LAST COMPLETED TOOL</span><strong>{privacy.content(lastCompletedTool(session))}</strong></div>
+                  </div>
+                )}
+                {session.error && session.cancellationStatus === 'none' && (
+                  <div className="lane-cancellation is-failed">
+                    <div>
+                      <span>CONTROL INTERRUPTED</span>
+                      <strong>{privacy.content(session.error)}</strong>
+                    </div>
+                    <div><span>TIME</span><strong>{controlTime(session.updatedAt)}</strong></div>
+                    <div><span>RECOVERY</span><strong>Control reconnected; resume when ready</strong></div>
                   </div>
                 )}
               </article>

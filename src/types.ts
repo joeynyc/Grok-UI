@@ -250,6 +250,9 @@ export interface ControlSnapshot {
   generatedAt: string
   connected: boolean
   starting: boolean
+  reconnecting: boolean
+  reconnectAttempt: number
+  lastDisconnectedAt: string
   agentName: string
   agentVersion: string
   error: string

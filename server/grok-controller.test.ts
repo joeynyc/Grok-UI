@@ -58,6 +58,47 @@ describe('GrokController cancellation', () => {
   })
 })
 
+describe('GrokController recovery', () => {
+  it('reconnects after the ACP child exits and reloads the interrupted session', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-recovery-'))
+    cleanup.push(workspace)
+    const controller = new GrokController(undefined, 12_000, 20)
+    controllers.push(controller)
+
+    const created = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Crash control process fixture',
+    })
+    await waitFor(() => Boolean(controller.snapshot().lastDisconnectedAt), 5_000)
+    await waitFor(() => controller.snapshot().connected, 5_000)
+
+    expect(controller.snapshot()).toMatchObject({
+      connected: true,
+      reconnecting: false,
+      reconnectAttempt: 0,
+    })
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      id: created.id,
+      state: 'failed',
+      stopReason: 'control_disconnected',
+    })
+    expect(controller.snapshot().sessions[0].error).toContain('Simulated ACP child crash')
+
+    await controller.promptSession({
+      sessionId: created.id,
+      cwd: workspace,
+      prompt: 'Verify recovered control session',
+    })
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle', 5_000)
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      id: created.id,
+      state: 'idle',
+      error: '',
+    })
+  }, 15_000)
+})
+
 describe('GrokController workflows', () => {
   it('collects cross-session telemetry and resumes a failed run through Grok', async () => {
     process.env.GROK_BIN = fakeGrok

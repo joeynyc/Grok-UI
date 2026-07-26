@@ -132,6 +132,16 @@ const agent = acp.agent({ name: 'grok-e2e' })
   .onRequest(acp.methods.agent.session.prompt, async ({ params, client }) => {
     if (!sessions.has(params.sessionId)) throw new Error('Unknown e2e session.')
     const instruction = promptText(params.prompt)
+    if (instruction.toLowerCase().includes('crash control process')) {
+      process.stderr.write('Simulated ACP child crash for recovery coverage.\n')
+      process.exit(86)
+    }
+    if (instruction === 'Verify recovered control session') {
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+      }
+    }
     await client.notify(acp.methods.client.session.update, {
       sessionId: params.sessionId,
       update: {

@@ -145,10 +145,15 @@ export class GrokController extends EventEmitter {
   private cancellationTimers = new Map<string, NodeJS.Timeout>()
   private stderrTail: string[] = []
   private persistTimer: NodeJS.Timeout | null = null
+  private reconnectTimer: NodeJS.Timeout | null = null
+  private reconnectAttempt = 0
+  private lastDisconnectedAt = ''
+  private stopping = false
 
   constructor(
     private readonly sessionState?: SessionStateStore,
     private readonly cancellationTimeoutMs = 12_000,
+    private readonly reconnectDelayMs = 1_000,
   ) {
     super()
   }
@@ -168,6 +173,9 @@ export class GrokController extends EventEmitter {
       generatedAt: now(),
       connected: this.connected,
       starting: this.starting,
+      reconnecting: Boolean(this.reconnectTimer) || (this.starting && this.reconnectAttempt > 0),
+      reconnectAttempt: this.reconnectAttempt,
+      lastDisconnectedAt: this.lastDisconnectedAt,
       agentName: this.agentName,
       agentVersion: this.agentVersion,
       error: this.error,
@@ -191,6 +199,9 @@ export class GrokController extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
     if (this.persistTimer) clearTimeout(this.persistTimer)
     this.persistTimer = null
     this.cancellationTimers.forEach((timer) => clearTimeout(timer))
@@ -378,34 +389,35 @@ export class GrokController extends EventEmitter {
   private async startInternal(): Promise<void> {
     this.starting = true
     this.error = ''
+    this.stderrTail = []
     this.emitSnapshot()
+    let child: ChildProcessWithoutNullStreams | null = null
     try {
       const grokPath = process.env.GROK_BIN || 'grok'
-      const child = spawn(grokPath, ['agent', '--no-leader', 'stdio'], {
+      const spawnedChild = spawn(grokPath, ['agent', '--no-leader', 'stdio'], {
         env: { ...process.env, NO_COLOR: '1' },
         stdio: ['pipe', 'pipe', 'pipe'],
       })
-      this.process = child
-      child.stderr.setEncoding('utf8')
-      child.stderr.on('data', (chunk: string) => {
+      child = spawnedChild
+      this.process = spawnedChild
+      spawnedChild.stderr.setEncoding('utf8')
+      spawnedChild.stderr.on('data', (chunk: string) => {
         this.stderrTail.push(...chunk.split('\n').filter(Boolean))
         this.stderrTail = this.stderrTail.slice(-20)
       })
-      child.once('exit', (code, signal) => {
-        this.connected = false
-        this.connection = null
-        this.process = null
-        this.error = `Grok control process exited (${signal || code || 'unknown'}).`
-        this.emitSnapshot()
+      spawnedChild.once('exit', (code, signal) => {
+        this.handleDisconnect(
+          spawnedChild,
+          `Grok control process exited (${signal || code || 'unknown'}).`,
+        )
       })
-      child.once('error', (spawnError) => {
-        this.error = `Unable to start Grok: ${safeError(spawnError)}`
-        this.emitSnapshot()
+      spawnedChild.once('error', (spawnError) => {
+        this.handleDisconnect(spawnedChild, `Unable to start Grok: ${safeError(spawnError)}`)
       })
 
       const stream = acp.ndJsonStream(
-        Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
-        Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
+        Writable.toWeb(spawnedChild.stdin) as WritableStream<Uint8Array>,
+        Readable.toWeb(spawnedChild.stdout) as ReadableStream<Uint8Array>,
       )
       const app = acp.client({ name: 'grok-ui' })
         .onRequest(acp.methods.client.session.requestPermission, ({ params }) =>
@@ -447,27 +459,83 @@ export class GrokController extends EventEmitter {
           || initialized.authMethods[0]
         await connection.agent.request(acp.methods.agent.authenticate, { methodId: method.id })
       }
+      this.loadedSessions.clear()
+      this.replayingSessions.clear()
       this.connected = true
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+      this.reconnectAttempt = 0
       this.error = ''
       void connection.closed.then(() => {
-        if (this.connection === connection) {
-          this.connected = false
-          this.connection = null
-          this.emitSnapshot()
-        }
+        this.handleDisconnect(spawnedChild, 'Grok control channel disconnected.')
       })
     } catch (startError) {
-      this.connected = false
       const detail = this.stderrTail.at(-1)
-      this.error = `${safeError(startError)}${detail ? ` — ${detail}` : ''}`
-      this.process?.kill('SIGTERM')
-      this.process = null
-      this.connection = null
+      const message = `${safeError(startError)}${detail ? ` — ${detail}` : ''}`
+      if (child && this.process === child) {
+        child.kill('SIGTERM')
+        this.handleDisconnect(child, message)
+      } else if (!this.stopping) {
+        this.connected = false
+        this.error = message
+        this.scheduleReconnect()
+      }
       throw startError
     } finally {
       this.starting = false
       this.emitSnapshot()
     }
+  }
+
+  private handleDisconnect(child: ChildProcessWithoutNullStreams, message: string): void {
+    if (this.process !== child) return
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+    this.process = null
+    this.connection = null
+    this.connected = false
+    this.loadedSessions.clear()
+    this.replayingSessions.clear()
+    if (this.stopping) return
+
+    this.lastDisconnectedAt = now()
+    const detail = this.stderrTail.at(-1)
+    this.error = `${message}${detail && !message.includes(detail) ? ` — ${detail}` : ''}`
+    this.cancellationTimers.forEach((timer) => clearTimeout(timer))
+    this.cancellationTimers.clear()
+    this.permissions.forEach((permission) => {
+      permission.resolve({ outcome: { outcome: 'cancelled' } })
+    })
+    this.permissions.clear()
+    this.sessions = new Map([...this.sessions].map(([id, session]) => {
+      if (!['starting', 'working', 'attention', 'stopping'].includes(session.state)) {
+        return [id, session]
+      }
+      return [id, {
+        ...session,
+        state: 'failed',
+        updatedAt: this.lastDisconnectedAt,
+        stopReason: 'control_disconnected',
+        error: this.error,
+        cancellationStatus: session.cancellationStatus === 'none'
+          ? 'none'
+          : 'failed',
+      }]
+    }))
+    this.emitSnapshot()
+    this.scheduleReconnect()
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopping || this.connected || this.reconnectTimer) return
+    this.reconnectAttempt += 1
+    const delay = Math.min(this.reconnectDelayMs * 2 ** (this.reconnectAttempt - 1), 30_000)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      void this.start().catch(() => {
+        this.scheduleReconnect()
+      })
+    }, delay)
+    this.emitSnapshot()
   }
 
   private context(): acp.ClientContext {
@@ -501,6 +569,7 @@ export class GrokController extends EventEmitter {
       const session = this.sessions.get(sessionId)
       if (!session) return
       this.clearCancellationTimer(sessionId)
+      if (!this.connected && session.stopReason === 'control_disconnected') return
       if (['requested', 'timed_out'].includes(session.cancellationStatus)) {
         const timestamp = now()
         this.sessions.set(sessionId, {
