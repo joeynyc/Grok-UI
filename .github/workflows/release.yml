@@ -44,7 +44,7 @@ jobs:
           mkdir release
           npm pack --ignore-scripts --pack-destination release
       - name: Publish npm package
-        run: npm publish release/*.tgz --access public
+        run: npm publish ./release/*.tgz --access public
       - name: Publish GitHub release
         if: github.event_name == 'push'
         env:
