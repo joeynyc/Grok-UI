@@ -19,7 +19,7 @@ and move through your complete local history without leaving the browser.
 <img src="docs/grok-ui-dashboard.png" width="900" alt="Grok UI Event Horizon dashboard with live runtime telemetry"/>
 
 [**Watch the 24-second product tour**](https://github.com/joeynyc/Grok-UI/releases/download/v0.5.1/grok-ui-dashboard-tour-final-white-logo.mp4)
-· [**See what’s new in v0.7.0**](https://github.com/joeynyc/Grok-UI/releases/download/v0.7.0/grok-ui-v0.7.0-workflow-command-center-update.mp4)
+· [**See what’s new in v0.8.0**](https://github.com/joeynyc/Grok-UI/releases/tag/v0.8.0)
 · [**Quickstart**](#quickstart) · [**What it does**](#what-it-does)
 · [**Architecture**](#architecture) · [**Security**](#privacy-and-security)
 
@@ -77,9 +77,10 @@ required.
 **⌁ Cross-session workflow command field**
 
 Grok Build v0.2.112+ workflow updates become one live run field: phase
-progression, agent roster, budget use, failures, results, and safe Pause,
-Resume, or Stop controls. Failed runs expose recovery only when Grok reports
-that the current process can resume them.
+progression, per-agent token usage, models, duration, budget use, failures,
+results, and safe Pause, Resume, or Stop controls. Searchable, paginated rosters
+stay usable as a workflow scales. Failed runs expose recovery only when Grok
+reports that the current process can resume them.
 
 </td>
 </tr>
@@ -181,8 +182,9 @@ UI-managed ACP sessions and aggregates them across the command field. Each run
 can show:
 
 - current status, objective, phase progression, and latest event
-- per-agent state and current work detail
+- per-agent state, phase, model, duration, and token usage
 - active, used, reserved, and total agent allocation
+- derived run-wide token totals with explicit incomplete-usage states
 - pause context and final result summary
 - Pause, Resume, and Stop controls when the run state supports them
 

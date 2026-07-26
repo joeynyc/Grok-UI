@@ -168,6 +168,11 @@ export interface WorkflowAgent {
   label: string
   status: string
   detail: string
+  phase: string
+  model: string
+  tokensUsed: number
+  durationMs: number
+  tokenTelemetryAvailable: boolean
 }
 
 export interface WorkflowRun {
@@ -183,10 +188,14 @@ export interface WorkflowRun {
   agentBudget: number
   agentsUsed: number
   agentsReserved: number
+  agentsRemaining: number
   usageIncomplete: boolean
   activeAgents: number
   currentAgentLabel: string
   agents: WorkflowAgent[]
+  totalTokens: number
+  tokenTelemetryAvailable: boolean
+  elapsedMs: number
   lastEvent: string
   lastEventDetail: string
   lastEventAt: string

@@ -80,6 +80,9 @@ describe('GrokController workflows', () => {
       currentPhase: 'verify',
       agentBudget: 8,
       agentsUsed: 4,
+      totalTokens: 6_400,
+      tokenTelemetryAvailable: true,
+      elapsedMs: 58_000,
       canResume: true,
     })
 
@@ -91,6 +94,7 @@ describe('GrokController workflows', () => {
       status: 'completed',
       resultSummary: 'Release verified and ready to ship.',
       agentsUsed: 5,
+      totalTokens: 9_100,
       canResume: false,
     })
     expect(controller.snapshot().sessions[0]?.lastPrompt).toBe('/workflow resume release-check')

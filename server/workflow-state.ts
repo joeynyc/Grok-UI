@@ -87,15 +87,35 @@ function normalizeAgents(value: unknown, existing: WorkflowAgent[]): WorkflowAge
   if (!Array.isArray(value)) return existing
   return value.map((item, index) => {
     if (typeof item === 'string') {
-      return { id: item || `agent-${index + 1}`, label: item || `Agent ${index + 1}`, status: 'unknown', detail: '' }
+      const id = item || `agent-${index + 1}`
+      const previous = existing.find((agent) => agent.id === id)
+      return previous || {
+        id,
+        label: item || `Agent ${index + 1}`,
+        status: 'unknown',
+        detail: '',
+        phase: '',
+        model: '',
+        tokensUsed: 0,
+        durationMs: 0,
+        tokenTelemetryAvailable: false,
+      }
     }
     const agent = record(item)
     const label = text(agent.label, agent.name, agent.title, agent.id) || `Agent ${index + 1}`
+    const id = text(agent.id, agent.agent_id, agent.agentId, agent.name) || `agent-${index + 1}`
+    const previous = existing.find((candidate) => candidate.id === id)
+    const hasTokenTelemetry = Object.hasOwn(agent, 'tokens_used') || Object.hasOwn(agent, 'tokensUsed')
     return {
-      id: text(agent.id, agent.agent_id, agent.agentId, agent.name) || `agent-${index + 1}`,
-      label,
-      status: text(agent.status, agent.state) || 'unknown',
-      detail: text(agent.detail, agent.message, agent.current_task, agent.currentTask),
+      id,
+      label: label || previous?.label || `Agent ${index + 1}`,
+      status: text(agent.status, agent.state) || previous?.status || 'unknown',
+      detail: text(agent.detail, agent.message, agent.current_task, agent.currentTask) || previous?.detail || '',
+      phase: text(agent.phase, agent.current_phase, agent.currentPhase) || previous?.phase || '',
+      model: text(agent.model, agent.model_name, agent.modelName) || previous?.model || '',
+      tokensUsed: number(agent.tokens_used, agent.tokensUsed) ?? previous?.tokensUsed ?? 0,
+      durationMs: number(agent.duration_ms, agent.durationMs) ?? previous?.durationMs ?? 0,
+      tokenTelemetryAvailable: hasTokenTelemetry || previous?.tokenTelemetryAvailable || false,
     }
   })
 }
@@ -140,6 +160,13 @@ export function parseWorkflowNotification(
   const status = deriveStatus(update, existing)
   const phasesValue = update.phases
   const agentsValue = update.agents
+  const agents = normalizeAgents(agentsValue, existing?.agents || [])
+  const tokenTelemetryAvailable = agents.some((agent) => agent.tokenTelemetryAvailable)
+    || existing?.tokenTelemetryAvailable
+    || false
+  const totalTokens = tokenTelemetryAvailable
+    ? agents.reduce((sum, agent) => sum + agent.tokensUsed, 0)
+    : existing?.totalTokens || 0
   const run: WorkflowRun = {
     id: runId,
     controlHandle,
@@ -153,6 +180,7 @@ export function parseWorkflowNotification(
     agentBudget: number(update.agent_budget, update.agentBudget) ?? existing?.agentBudget ?? 0,
     agentsUsed: number(update.agents_used, update.agentsUsed) ?? existing?.agentsUsed ?? 0,
     agentsReserved: number(update.agents_reserved, update.agentsReserved) ?? existing?.agentsReserved ?? 0,
+    agentsRemaining: number(update.agents_remaining, update.agentsRemaining) ?? existing?.agentsRemaining ?? 0,
     usageIncomplete: boolean(update.agent_usage_incomplete, update.agentUsageIncomplete)
       ?? existing?.usageIncomplete
       ?? false,
@@ -160,7 +188,10 @@ export function parseWorkflowNotification(
     currentAgentLabel: text(update.current_agent_label, update.currentAgentLabel)
       || existing?.currentAgentLabel
       || '',
-    agents: normalizeAgents(agentsValue, existing?.agents || []),
+    agents,
+    totalTokens,
+    tokenTelemetryAvailable,
+    elapsedMs: number(update.elapsed_ms, update.elapsedMs) ?? existing?.elapsedMs ?? 0,
     lastEvent: text(update.last_event, update.lastEvent, update.event) || existing?.lastEvent || '',
     lastEventDetail: text(update.last_event_detail, update.lastEventDetail)
       || existing?.lastEventDetail

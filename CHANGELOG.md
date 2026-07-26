@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — 2026-07-25
+
+- Added real per-agent workflow token usage from Grok Build’s structured
+  `workflow_updated` telemetry, with an aggregate total for each run.
+- Added agent model, phase, duration, remaining capacity, and elapsed-time
+  signals without scraping terminal output.
+- Added searchable, paginated workflow rosters that stay responsive when Grok
+  scales a workflow toward its 1,024-agent ceiling.
+- Added explicit unavailable and incomplete-usage states so derived totals do
+  not imply precision Grok has not reported.
+- Expanded workflow parser, controller, and browser coverage for token
+  telemetry, partial updates, and large agent fields.
+
 ## 0.7.0 — 2026-07-25
 
 - Added a cross-session Workflow Command Center powered by Grok Build workflow

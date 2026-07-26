@@ -69,14 +69,28 @@ async function notifyWorkflow(client, sessionId, status, overrides = {}) {
       active_agents: status === 'running' ? 1 : 0,
       current_agent_label: status === 'running' ? 'Verifier' : '',
       agents: [
-        { id: 'builder', label: 'Builder', status: 'completed', detail: 'Artifact assembled' },
         {
-          id: 'verifier',
+          agent_id: 'builder',
+          label: 'Builder',
+          state: 'completed',
+          detail: 'Artifact assembled',
+          phase: 'build',
+          model: 'grok-code-fast-1',
+          tokens_used: 4_200,
+          duration_ms: 36_000,
+        },
+        {
+          agent_id: 'verifier',
           label: 'Verifier',
-          status: completed ? 'completed' : failed ? 'failed' : 'running',
+          state: completed ? 'completed' : failed ? 'failed' : 'running',
           detail: completed ? 'Release checks passed' : failed ? 'Fixture check failed' : 'Re-running release checks',
+          phase: 'verify',
+          model: 'grok-code-fast-1',
+          tokens_used: completed ? 4_900 : failed ? 2_200 : 3_000,
+          duration_ms: completed ? 31_000 : failed ? 18_000 : 22_000,
         },
       ],
+      elapsed_ms: completed ? 78_000 : failed ? 58_000 : 64_000,
       last_event: completed ? 'workflow_completed' : failed ? 'workflow_failed' : 'workflow_resumed',
       last_event_detail: completed
         ? 'All release verification lanes passed.'
@@ -130,6 +144,42 @@ const agent = acp.agent({ name: 'grok-e2e' })
       return {
         stopReason: 'end_turn',
         usage: { inputTokens: 10, outputTokens: 6, totalTokens: 16 },
+      }
+    }
+    if (instruction.includes('Start scaled workflow fixture')) {
+      const agents = Array.from({ length: 30 }, (_, index) => ({
+        agent_id: `scale-agent-${index + 1}`,
+        label: `Scale agent ${index + 1}`,
+        state: index < 6 ? 'running' : 'completed',
+        detail: index < 6 ? 'Processing a live shard' : 'Shard complete',
+        phase: index < 6 ? 'synthesize' : 'research',
+        model: index % 2 ? 'grok-4-fast' : 'grok-4',
+        tokens_used: (index + 1) * 125,
+        duration_ms: (index + 1) * 900,
+      }))
+      await notifyWorkflow(client, params.sessionId, 'running', {
+        run_id: 'workflow-scale-1',
+        display_name: 'scale-check',
+        objective: 'Coordinate a large multi-agent research field.',
+        phases: [
+          { id: 'research', name: 'Research shards', status: 'completed' },
+          { id: 'synthesize', name: 'Synthesize findings', status: 'in_progress' },
+          { id: 'review', name: 'Review result', status: 'pending' },
+        ],
+        current_phase: 'synthesize',
+        agent_budget: 1024,
+        agents_used: 30,
+        agents_remaining: 994,
+        active_agents: 6,
+        current_agent_label: 'Scale agent 1',
+        agents,
+        elapsed_ms: 45_000,
+        last_event: 'workflow_progress',
+        last_event_detail: 'Six synthesis agents are processing live shards.',
+      })
+      return {
+        stopReason: 'end_turn',
+        usage: { inputTokens: 8, outputTokens: 4, totalTokens: 12 },
       }
     }
     if (instruction === '/workflow resume release-check') {

@@ -150,10 +150,14 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Verify release')).toBeVisible()
     await expect(page.getByText('Verifier').first()).toBeVisible()
     await expect(page.getByText('4 / 8')).toBeVisible()
+    await expect(page.getByText('grok-code-fast-1').first()).toBeVisible()
+    await expect(page.locator('.workflow-token-total').getByText('6.4K')).toBeVisible()
+    await expect(page.getByTitle('4,200 tokens')).toBeVisible()
 
     await page.getByRole('button', { name: 'Resume run' }).click()
     await expect(page.getByText('Release verified and ready to ship.')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('.workflow-mission-head').getByText('completed')).toBeVisible()
+    await expect(page.locator('.workflow-token-total').getByText('9.1K')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeDisabled()
 
     const snapshot = await (await page.request.get('/api/control')).json()
@@ -162,6 +166,9 @@ test.describe.serial('public launch path', () => {
       displayName: 'release-check',
       status: 'completed',
       agentsUsed: 5,
+      totalTokens: 9_100,
+      tokenTelemetryAvailable: true,
+      elapsedMs: 78_000,
       resultSummary: 'Release verified and ready to ship.',
     })
 
@@ -170,6 +177,31 @@ test.describe.serial('public launch path', () => {
     expect(privateBody).not.toContain('release-check')
     expect(privateBody).not.toContain('Ship a verified release')
     expect(privateBody).not.toContain('Release verified and ready to ship.')
+  })
+
+  test('pages and searches a large workflow agent roster', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /Control/ }).click()
+
+    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.getByLabel('WORKSPACE').fill(workspace)
+    await page.getByLabel('INSTRUCTION').fill('Start scaled workflow fixture')
+    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+
+    await page.getByRole('button', { name: /Runs/ }).click()
+    await expect(page.getByText('scale-check').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('1–12 / 30')).toBeVisible()
+    await expect(page.getByText('Scale agent 12')).toBeVisible()
+    await expect(page.getByText('Scale agent 13')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Next agent page' }).click()
+    await expect(page.getByText('13–24 / 30')).toBeVisible()
+    await expect(page.getByText('Scale agent 13')).toBeVisible()
+
+    await page.getByLabel('Search agent roster').fill('Scale agent 30')
+    await expect(page.getByText('1–1 / 1')).toBeVisible()
+    await expect(page.getByText('Scale agent 30')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Next agent page' })).toHaveCount(0)
   })
 
   test('cancels cleanly while a permission decision is pending', async ({ page }) => {

@@ -3,12 +3,15 @@ import {
   ArrowUpRight,
   Bot,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleStop,
   Pause,
   Play,
   RefreshCw,
   RotateCcw,
   Satellite,
+  Search,
   Workflow,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -22,6 +25,7 @@ import type {
 } from '../types'
 
 type Filter = 'all' | 'active' | 'failed' | 'complete'
+const AGENTS_PER_PAGE = 12
 
 function displayStatus(status: WorkflowRunStatus): string {
   return status === 'budget-limited' ? 'budget limited' : status
@@ -61,6 +65,24 @@ function cssToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
 }
 
+function formatTokens(value: number): string {
+  if (value < 1_000) return String(value)
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}K`
+  if (value < 1_000_000_000) return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`
+  return `${(value / 1_000_000_000).toFixed(1)}B`
+}
+
+function formatDuration(value: number): string {
+  if (!value) return '—'
+  if (value < 1_000) return `${Math.round(value)}ms`
+  const seconds = Math.round(value / 1_000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`
+}
+
 function statusIcon(status: WorkflowRunStatus) {
   if (status === 'failed' || status === 'budget-limited') return <AlertTriangle size={15} />
   if (status === 'completed') return <CheckCircle2 size={15} />
@@ -86,6 +108,8 @@ export function WorkflowsView({
   const [selectedId, setSelectedId] = useState(runs[0] ? runKey(runs[0]) : '')
   const [pendingAction, setPendingAction] = useState<WorkflowControlAction | ''>('')
   const [error, setError] = useState('')
+  const [agentQuery, setAgentQuery] = useState('')
+  const [agentPage, setAgentPage] = useState(0)
 
   const filtered = useMemo(
     () => runs.filter((run) => matchesFilter(run, filter)),
@@ -109,6 +133,25 @@ export function WorkflowsView({
   const agentsActive = runs.reduce((sum, run) => sum + run.activeAgents, 0)
   const agentsUsed = runs.reduce((sum, run) => sum + run.agentsUsed, 0)
   const agentBudget = runs.reduce((sum, run) => sum + run.agentBudget, 0)
+  const tokenRuns = runs.filter((run) => run.tokenTelemetryAvailable)
+  const totalTokens = tokenRuns.reduce((sum, run) => sum + run.totalTokens, 0)
+  const tokenUsageIncomplete = tokenRuns.some((run) => run.usageIncomplete)
+  const normalizedAgentQuery = agentQuery.trim().toLowerCase()
+  const matchingAgents = (selected?.agents || [])
+    .map((agent, index) => ({ agent, index }))
+    .filter(({ agent }) => !normalizedAgentQuery || [
+      agent.label,
+      agent.status,
+      agent.detail,
+      agent.phase,
+      agent.model,
+    ].some((value) => value.toLowerCase().includes(normalizedAgentQuery)))
+  const agentPageCount = Math.max(1, Math.ceil(matchingAgents.length / AGENTS_PER_PAGE))
+  const currentAgentPage = Math.min(agentPage, agentPageCount - 1)
+  const visibleAgents = matchingAgents.slice(
+    currentAgentPage * AGENTS_PER_PAGE,
+    (currentAgentPage + 1) * AGENTS_PER_PAGE,
+  )
 
   const act = async (action: WorkflowControlAction) => {
     if (!selected) return
@@ -143,12 +186,21 @@ export function WorkflowsView({
         <div className={`live-summary-metric ${failed ? 'live-tone-coral' : 'live-tone-paper'}`}>
           <span>Recovery queue</span><strong>{failed}</strong><small>failed or budget limited</small>
         </div>
-        <div className="live-summary-metric live-tone-paper">
-          <span>Agents live</span><strong>{agentsActive}</strong><small>across managed workflows</small>
+        <div className={`live-summary-metric ${totalTokens ? 'live-tone-lime' : 'live-tone-paper'}`}>
+          <span>Workflow tokens</span><strong>{tokenRuns.length ? formatTokens(totalTokens) : '—'}</strong>
+          <small>
+            {tokenRuns.length
+              ? `${tokenUsageIncomplete ? 'partial · ' : ''}${tokenRuns.length} telemetry ${tokenRuns.length === 1 ? 'run' : 'runs'}`
+              : 'waiting for agent usage'}
+          </small>
         </div>
         <div className="live-summary-metric live-tone-paper">
           <span>Agent budget</span><strong>{agentBudget ? `${agentsUsed}/${agentBudget}` : '—'}</strong>
-          <small>{agentBudget ? `${Math.round((agentsUsed / agentBudget) * 100)}% deployed` : 'waiting for telemetry'}</small>
+          <small>
+            {agentBudget
+              ? `${Math.round((agentsUsed / agentBudget) * 100)}% deployed · ${agentsActive} live`
+              : 'waiting for telemetry'}
+          </small>
         </div>
       </section>
 
@@ -294,19 +346,83 @@ export function WorkflowsView({
                       <strong>{selected.activeAgents} active / {selected.agentsUsed} used</strong>
                     </header>
                     {selected.agents.length ? (
-                      <div className="workflow-agent-list">
-                        {selected.agents.map((agent, index) => (
-                          <div key={agent.id}>
-                            <span className="workflow-agent-index">A{String(index + 1).padStart(2, '0')}</span>
-                            <i className={`workflow-agent-dot agent-${cssToken(agent.status)}`} />
-                            <span>
-                              <strong>{privacy.capability(agent.label, 'Agent')}</strong>
-                              <small>{privacy.content(agent.detail || 'No current detail')}</small>
-                            </span>
-                            <em>{agent.status.replaceAll('_', ' ')}</em>
+                      <>
+                        <div className="workflow-agent-tools">
+                          <label>
+                            <Search size={12} />
+                            <span className="sr-only">Search agent roster</span>
+                            <input
+                              type="search"
+                              aria-label="Search agent roster"
+                              value={agentQuery}
+                              placeholder="FILTER LABEL, MODEL, PHASE…"
+                              onChange={(event) => {
+                                setAgentQuery(event.target.value)
+                                setAgentPage(0)
+                              }}
+                            />
+                          </label>
+                          <span>
+                            {matchingAgents.length
+                              ? `${currentAgentPage * AGENTS_PER_PAGE + 1}–${Math.min((currentAgentPage + 1) * AGENTS_PER_PAGE, matchingAgents.length)} / ${matchingAgents.length}`
+                              : '0 / 0'}
+                          </span>
+                        </div>
+                        {visibleAgents.length ? (
+                          <div className="workflow-agent-list">
+                            {visibleAgents.map(({ agent, index }) => (
+                              <div key={agent.id}>
+                                <span className="workflow-agent-index">A{String(index + 1).padStart(2, '0')}</span>
+                                <i className={`workflow-agent-dot agent-${cssToken(agent.status)}`} />
+                                <span className="workflow-agent-copy">
+                                  <span className="workflow-agent-title">
+                                    <strong>{privacy.capability(agent.label, 'Agent')}</strong>
+                                    {agent.model && <small>{agent.model}</small>}
+                                  </span>
+                                  <small className="workflow-agent-detail">
+                                    {privacy.content(agent.detail || 'No current detail')}
+                                  </small>
+                                  {agent.phase && (
+                                    <span className="workflow-agent-phase">
+                                      PHASE / {privacy.content(agent.phase.replaceAll('_', ' '))}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="workflow-agent-metrics">
+                                  <strong title={agent.tokenTelemetryAvailable ? `${agent.tokensUsed.toLocaleString()} tokens` : 'Token usage unavailable'}>
+                                    {agent.tokenTelemetryAvailable ? formatTokens(agent.tokensUsed) : '—'} <span>TOK</span>
+                                  </strong>
+                                  <small>{formatDuration(agent.durationMs)}</small>
+                                  <em>{agent.status.replaceAll('_', ' ')}</em>
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        ) : (
+                          <p className="workflow-muted">No agents match this roster filter.</p>
+                        )}
+                        {matchingAgents.length > AGENTS_PER_PAGE && (
+                          <footer className="workflow-agent-pages">
+                            <button
+                              type="button"
+                              aria-label="Previous agent page"
+                              disabled={currentAgentPage === 0}
+                              onClick={() => setAgentPage((page) => Math.max(0, page - 1))}
+                            >
+                              <ChevronLeft size={13} /> Previous
+                            </button>
+                            <span>PAGE {currentAgentPage + 1} / {agentPageCount}</span>
+                            <button
+                              type="button"
+                              aria-label="Next agent page"
+                              disabled={currentAgentPage >= agentPageCount - 1}
+                              onClick={() => setAgentPage((page) => Math.min(agentPageCount - 1, page + 1))}
+                            >
+                              Next <ChevronRight size={13} />
+                            </button>
+                          </footer>
+                        )}
+                      </>
                     ) : <p className="workflow-muted">No per-agent roster was included in the latest update.</p>}
                   </section>
 
@@ -319,7 +435,16 @@ export function WorkflowsView({
                       <span>Agent budget</span>
                       <strong>{selected.agentsUsed} / {selected.agentBudget || '—'}</strong>
                       <div><i style={{ width: `${selected.agentBudget ? Math.min(100, (selected.agentsUsed / selected.agentBudget) * 100) : 0}%` }} /></div>
-                      {selected.usageIncomplete && <small>Usage total is still settling.</small>}
+                      {selected.usageIncomplete && <small>Agent and token totals are still settling.</small>}
+                    </div>
+                    <div className="workflow-token-total">
+                      <span>Run token usage</span>
+                      <strong>{selected.tokenTelemetryAvailable ? formatTokens(selected.totalTokens) : '—'}</strong>
+                      <small>
+                        {selected.tokenTelemetryAvailable
+                          ? `${selected.agents.filter((agent) => agent.tokenTelemetryAvailable).length} reporting agents${selected.elapsedMs ? ` · ${formatDuration(selected.elapsedMs)} elapsed` : ''}`
+                          : 'Not included in this workflow update'}
+                      </small>
                     </div>
                   </section>
                 </div>
