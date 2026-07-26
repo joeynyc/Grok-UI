@@ -126,7 +126,7 @@ export async function getSessionWorkbench(sessionId: string): Promise<SessionWor
     await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/workbench`, {
       headers: { Accept: 'application/json' },
     }),
-    'Session workbench request failed',
+    'Session console request failed',
   )
 }
 

@@ -274,9 +274,9 @@ export function SessionWorkbench({
       className="workbench-layer"
       role="dialog"
       aria-modal="true"
-      aria-label={`Session workbench: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
+      aria-label={`Session console: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
     >
-      <button className="workbench-scrim" onClick={onClose} aria-label="Close session workbench" />
+      <button className="workbench-scrim" onClick={onClose} aria-label="Close session console" />
       <section className="session-workbench">
         <header className="workbench-head">
           <div className="workbench-identity">
@@ -292,25 +292,40 @@ export function SessionWorkbench({
             ) : (
               <div className="workbench-title">
                 <div>
-                  <span>SESSION / {privacy.identifier(sessionId)}</span>
+                  <span>SESSION CONSOLE / {privacy.identifier(sessionId)}</span>
                   <h1>{privacy.sessionTitle(session?.title || `Session ${sessionId.slice(0, 8)}`, sessionId)}</h1>
                 </div>
                 <button onClick={() => setRenaming(true)} aria-label="Rename session"><Pencil size={15} /></button>
               </div>
             )}
-            <p><FolderGit2 size={14} /> {session?.cwd ? privacy.path(session.cwd) : 'Resolving workspace…'}</p>
+            <div className="workbench-context">
+              <p>
+                <FolderGit2 size={14} />
+                <span>{session?.cwd ? privacy.path(session.cwd) : 'Resolving workspace…'}</span>
+              </p>
+              <span>Chat with this agent, review its activity, and inspect changes.</span>
+            </div>
           </div>
           <div className="workbench-head-actions">
-            <button className="workbench-archive" onClick={() => void toggleArchive()}>
+            <button
+              className="workbench-archive"
+              onClick={() => void toggleArchive()}
+              aria-label={session?.archived ? 'Restore session' : 'Archive session'}
+            >
               {session?.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-              {session?.archived ? 'Restore' : 'Archive'}
+              <span>{session?.archived ? 'Restore' : 'Archive'}</span>
             </button>
             {canCancel && (
-              <button className="workbench-stop" onClick={() => void cancel()}>
-                <CircleStop size={16} /> {data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}
+              <button
+                className="workbench-stop"
+                onClick={() => void cancel()}
+                aria-label={data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}
+              >
+                <CircleStop size={16} />
+                <span>{data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}</span>
               </button>
             )}
-            <button className="icon-button" onClick={onClose} aria-label="Close session workbench"><X size={19} /></button>
+            <button className="icon-button" onClick={onClose} aria-label="Close session console"><X size={19} /></button>
           </div>
         </header>
 
@@ -325,7 +340,7 @@ export function SessionWorkbench({
           <div><span>UPDATED</span><strong>{elapsed(session?.updatedAt || '')}</strong></div>
         </div>
 
-        <nav className="workbench-tabs" aria-label="Session workbench sections">
+        <nav className="workbench-tabs" aria-label="Session console sections">
           <button className={tab === 'timeline' ? 'is-active' : ''} onClick={() => setTab('timeline')}>
             <Radio size={15} /> Timeline <span>{transcript.length}</span>
           </button>

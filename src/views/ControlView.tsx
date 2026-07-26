@@ -383,7 +383,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                     Open stream
                   </button>
                   <button className="open-lane" onClick={() => onOpenSession(session.id)}>
-                    Workbench
+                    Open Session
                   </button>
                 </div>
                 {session.cancellationStatus !== 'none' && (

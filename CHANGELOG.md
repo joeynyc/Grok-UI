@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Renamed the session “Workbench” entry points to “Open Session” and labeled
+  the focused agent view “Session Console,” with a concise explanation of its
+  live chat, activity, and change-review capabilities.
+
 ## 0.8.1 — 2026-07-25
 
 - Replaced scattered 5–10px dashboard typography with a consistent readable

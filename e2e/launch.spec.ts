@@ -121,6 +121,18 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText(/PID \d+/).first()).toBeVisible()
   })
 
+  test('opens a live agent in the clearly labeled Session Console', async ({ page }) => {
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'Open Session' }).click()
+
+    await expect(page.getByRole('dialog', { name: /Session console:/ })).toBeVisible()
+    await expect(page.getByText(/SESSION CONSOLE/)).toBeVisible()
+    await expect(page.getByText('Chat with this agent, review its activity, and inspect changes.')).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Session console sections' })).toBeVisible()
+    await expect(page.getByPlaceholder('Send a follow-up to this session…')).toBeVisible()
+  })
+
   test('redacts sensitive runtime data and persists Privacy Mode', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Confidential Launch').first()).toBeVisible()
@@ -290,6 +302,16 @@ test.describe.serial('public launch path', () => {
       clientWidth: document.documentElement.clientWidth,
     }))
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
+    expect(await unreadableVisibleText(page)).toEqual([])
+
+    await page.getByRole('button', { name: 'Open Session' }).click()
+    await expect(page.getByRole('dialog', { name: /Session console:/ })).toBeVisible()
+    await expect(page.getByText(/SESSION CONSOLE/)).toBeVisible()
+    const consoleOverflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }))
+    expect(consoleOverflow.scrollWidth).toBeLessThanOrEqual(consoleOverflow.clientWidth)
     expect(await unreadableVisibleText(page)).toEqual([])
   })
 

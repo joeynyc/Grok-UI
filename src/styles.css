@@ -4572,10 +4572,6 @@ kbd {
     font-size: 14px;
   }
 
-  .runtime-actions .text-button {
-    display: none;
-  }
-
   .runtime-instruments {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -5195,14 +5191,43 @@ kbd {
   background: var(--lime-soft);
 }
 
-.workbench-identity > p {
+.workbench-context {
   max-width: 950px;
   margin: 10px 0 0;
   display: flex;
   align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.workbench-context p {
+  margin: 0;
+  display: flex;
+  align-items: center;
   gap: 7px;
-  overflow: hidden;
+  min-width: 0;
   color: var(--muted);
+  font-size: var(--type-body);
+  white-space: nowrap;
+}
+
+.workbench-context p > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-context p svg {
+  flex: 0 0 auto;
+}
+
+.workbench-context > span {
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding-left: 12px;
+  color: var(--muted);
+  border-left: 1px solid var(--line-strong);
   font-size: var(--type-body);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5990,7 +6015,10 @@ kbd {
     width: 38px;
     padding: 0;
     justify-content: center;
-    font-size: 0;
+  }
+
+  .workbench-head-actions > button:not(.icon-button) > span {
+    display: none;
   }
 
   .workbench-instruments {
@@ -6045,9 +6073,17 @@ kbd {
     font-size: 18px;
   }
 
-  .workbench-identity > p {
+  .workbench-context {
     max-width: 260px;
+    margin-top: 7px;
+  }
+
+  .workbench-context p {
     font-size: var(--type-label);
+  }
+
+  .workbench-context > span {
+    display: none;
   }
 
   .workbench-head-actions {

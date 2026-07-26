@@ -54,11 +54,11 @@ provides them—never guessed or auto-approved.
 <tr>
 <td width="50%" valign="top">
 
-**◇ One workbench per session**
+**◇ One Session Console per agent**
 
-Open any recorded CLI session or managed lane for its conversation,
-reasoning, tool timeline, permission queue, token usage, and follow-up
-controls. Managed sessions survive dashboard restarts.
+Open any recorded CLI session or managed lane in a clearly labeled Session
+Console to chat with the agent, review its activity, inspect changes, manage
+permissions, and send follow-ups. Managed sessions survive dashboard restarts.
 
 </td>
 <td width="50%" valign="top">

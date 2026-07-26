@@ -772,7 +772,7 @@ function LiveView({
               <div className="runtime-actions">
                 <AgentStatePill agent={selected} />
                 <button className="text-button" onClick={() => onOpenSession(selectedSession || selected.id)}>
-                  Open workbench <ArrowRight size={14} />
+                  Open Session <ArrowRight size={14} />
                 </button>
               </div>
             </header>
@@ -1406,7 +1406,7 @@ function SessionsView({
           icon={archiveScope === 'archived' ? Archive : Search}
           title={archiveScope === 'archived' ? 'No archived sessions' : 'No matching sessions'}
           copy={archiveScope === 'archived'
-            ? 'Archive a session from its workbench and it will appear here.'
+            ? 'Archive a session from its Session Console and it will appear here.'
             : 'Try a broader title, workspace, model, or agent name.'}
         />}
       </section>

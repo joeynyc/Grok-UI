@@ -289,7 +289,7 @@ export function WorkflowsView({
                     <strong>{session ? privacy.sessionTitle(session.title, session.id) : 'Managed session'}</strong>
                     <small>{session ? privacy.workspace(session.cwd) : privacy.identifier(selected.sessionId)}</small>
                     <button type="button" onClick={() => onOpenSession(selected.sessionId)}>
-                      Open workbench <ArrowUpRight size={13} />
+                      Open Session <ArrowUpRight size={13} />
                     </button>
                   </div>
                 </header>
