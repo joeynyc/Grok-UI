@@ -44,7 +44,7 @@ const forbidden = [
 const failures = []
 if (manifest.private === true) failures.push('package.json is still marked private')
 if (manifest.bin?.['grok-ui'] !== 'bin/grok-ui.mjs') failures.push('grok-ui executable is not configured')
-const releaseTag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME || ''
+const releaseTag = process.env.RELEASE_TAG || ''
 if (releaseTag && releaseTag !== `v${manifest.version}`) {
   failures.push(`release tag ${releaseTag} does not match package version v${manifest.version}`)
 }
