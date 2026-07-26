@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1 — 2026-07-25
+
+- Replaced scattered 5–10px dashboard typography with a consistent readable
+  scale for micro-labels, metadata, body copy, and controls.
+- Improved supporting-text contrast in both Operator and Event Horizon themes
+  while preserving intentionally dim disabled states.
+- Reworked the 390px bottom navigation into a readable horizontal command rail
+  instead of compressing nine labels into colliding fixed columns.
+- Added browser coverage that audits visible supporting text across all ten
+  dashboard sections and the mobile viewport.
+
 ## 0.8.0 — 2026-07-25
 
 - Added real per-agent workflow token usage from Grok Build’s structured

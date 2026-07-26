@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,6 +7,29 @@ const fixtureRoot = path.join(os.tmpdir(), 'grok-ui-e2e')
 const grokHome = path.join(fixtureRoot, 'grok-home')
 const workspace = path.join(fixtureRoot, 'secret-client')
 const sessionId = 'live-e2e-session'
+
+async function unreadableVisibleText(page: Page, minimumPx = 8) {
+  return page.locator('body *').evaluateAll((elements, minimum) => elements
+    .filter((element) => {
+      const hasDirectText = [...element.childNodes].some((node) =>
+        node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()))
+      if (!hasDirectText) return false
+      const style = getComputedStyle(element)
+      const bounds = element.getBoundingClientRect()
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity) > 0
+        && bounds.width > 0
+        && bounds.height > 0
+        && Number.parseFloat(style.fontSize) < minimum
+    })
+    .map((element) => ({
+      element: element.tagName.toLowerCase(),
+      className: element.className,
+      text: element.textContent?.trim().slice(0, 80),
+      fontSize: getComputedStyle(element).fontSize,
+    })), minimumPx)
+}
 
 async function registerLiveSession() {
   const sessionDirectory = path.join(grokHome, 'sessions', 'e2e-workspace', sessionId)
@@ -267,5 +290,27 @@ test.describe.serial('public launch path', () => {
       clientWidth: document.documentElement.clientWidth,
     }))
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
+    expect(await unreadableVisibleText(page)).toEqual([])
+  })
+
+  test('keeps supporting text readable across every dashboard section', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto('/')
+
+    for (const section of [
+      'Live',
+      'Control',
+      'Runs',
+      'Changes',
+      'Overview',
+      'Sessions',
+      'Activity',
+      'Library',
+      'Memory',
+      'Themes',
+    ]) {
+      await page.getByRole('button', { name: new RegExp(section, 'i') }).first().click()
+      expect(await unreadableVisibleText(page), `${section} contains text below 8px`).toEqual([])
+    }
   })
 })
