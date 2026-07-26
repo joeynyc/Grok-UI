@@ -211,6 +211,24 @@ unavailable. Grok UI does not substitute context-window occupancy for
 cumulative CLI token usage, and explicitly mixed observation scopes are never
 presented as precise spend.
 
+Optional token or reported-cost budgets can be scoped globally or to a project,
+model, session, or workflow agent. They are evaluated only against a
+non-overlapping ledger scope, and local alerts are deduplicated at 80% and
+100%. JSON and CSV exports are capped, authenticated, and redacted on the
+server before download whenever Privacy Mode is active.
+
+## Runtime intelligence
+
+The Live view projects bounded process trees from active Grok and UI-managed
+process IDs. It discovers listening TCP ports only for that selected process
+set, classifies common databases and development services without connecting
+to them, and shows structured test status and external-call categories from the
+existing safe tool lifecycle.
+
+Inspection uses fixed timeouts, output, process-count, and tree-depth caps. Raw
+command arguments, tool input, credentials, headers, terminal history, and
+unrelated host processes are never included in the browser contract.
+
 ## Themes
 
 Two complete visual systems ship with the dashboard:

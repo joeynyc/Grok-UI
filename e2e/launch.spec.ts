@@ -48,7 +48,7 @@ async function registerLiveSession() {
     })),
     fs.writeFile(path.join(sessionDirectory, 'signals.json'), JSON.stringify({
       turnCount: 1,
-      toolCallCount: 1,
+      toolCallCount: 3,
       contextWindowUsage: 25,
       modelsUsed: ['grok-e2e'],
     })),
@@ -71,6 +71,24 @@ async function registerLiveSession() {
           toolCallId: 'live-tool',
           title: 'Inspect secret-client',
           status: 'in_progress',
+        },
+      }),
+      JSON.stringify({
+        timestamp,
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'runtime-test-tool',
+          title: 'Run Vitest suite',
+          status: 'completed',
+        },
+      }),
+      JSON.stringify({
+        timestamp,
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'runtime-external-tool',
+          title: 'Fetch GitHub issue',
+          status: 'completed',
         },
       }),
     ].join('\n') + '\n'),
@@ -134,6 +152,37 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('EVENT STREAM LINKED')).toBeVisible({ timeout: 15_000 })
   })
 
+  test('shows bounded process, test, and external-call runtime intelligence', async ({ page }) => {
+    await page.goto('/')
+
+    const intelligence = page.locator('.runtime-intelligence')
+    await expect(intelligence.getByRole('heading', { name: /What the agents started/ })).toBeVisible()
+    await expect(intelligence.getByText('Spawned descendants')).toBeVisible()
+    await expect(intelligence.getByText('Run Vitest suite')).toBeVisible()
+    await expect(intelligence.getByText('Fetch GitHub issue')).toBeVisible()
+
+    const runtime = await (await page.request.get('/api/runtime?refresh=1')).json()
+    expect(runtime.roots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          managed: false,
+          sessionIds: ['live-e2e-session'],
+        }),
+      ]),
+    )
+    expect(runtime.processes.length).toBeGreaterThan(0)
+    expect(runtime.tests[0]).toMatchObject({
+      title: 'Run Vitest suite',
+      framework: 'Vitest',
+      status: 'passed',
+    })
+    expect(runtime.externalCalls[0]).toMatchObject({
+      title: 'Fetch GitHub issue',
+      category: 'vcs',
+    })
+    expect(JSON.stringify(runtime)).not.toContain('--secret')
+  })
+
   test('opens a live agent in the clearly labeled Session Console', async ({ page }) => {
     await page.goto('/')
 
@@ -159,6 +208,8 @@ test.describe.serial('public launch path', () => {
     expect(body).not.toContain('secret-client')
     expect(body).not.toContain('Example Person')
     expect(body).not.toContain('192.168.1.42')
+    expect(body).not.toContain('Run Vitest suite')
+    expect(body).not.toContain('Fetch GitHub issue')
     expect(body).not.toContain(String(process.pid))
 
     await page.reload()
@@ -322,9 +373,23 @@ test.describe.serial('public launch path', () => {
     await expect(page.locator('.usage-ledger')).toContainText('secret-client')
     await expect(page.locator('.usage-ledger')).toContainText(/derived|incomplete/)
 
+    const budgets = page.locator('.usage-budget-panel')
+    await budgets.getByLabel('Limit').fill('1')
+    await budgets.getByRole('button', { name: 'Add budget' }).click()
+    await expect(budgets.getByText('All usage', { exact: true })).toBeVisible()
+    await expect(budgets.locator('.usage-budget-row.is-exceeded')).toBeVisible()
+    await expect(budgets.getByText(/100% threshold reached/)).toBeVisible()
+
     await page.getByRole('button', { name: 'Privacy' }).click()
     await expect(page.locator('.usage-ledger')).not.toContainText('secret-client')
     await expect(page.locator('.usage-ledger')).toContainText(/Workspace [A-Z0-9]{3}/)
+
+    const exported = await page.request.get('/api/usage/export?period=all&scope=sessions&groupBy=project&format=json&privacy=1')
+    expect(exported.ok()).toBe(true)
+    expect(exported.headers()['content-disposition']).toContain('grok-ui-usage.json')
+    const exportBody = await exported.text()
+    expect(exportBody).toContain('"privacyApplied": true')
+    expect(exportBody).not.toContain('secret-client')
   })
 
   test('cancels cleanly while a permission decision is pending', async ({ page }) => {

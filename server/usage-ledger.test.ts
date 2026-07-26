@@ -218,7 +218,7 @@ describe('UsageLedger', () => {
       cost: { value: 0.04, currency: 'USD' },
     })
     const persisted = JSON.parse(await fs.readFile(first.file, 'utf8'))
-    expect(persisted.version).toBe(2)
+    expect(persisted.version).toBe(3)
     expect((await fs.stat(first.file)).mode & 0o777).toBe(0o600)
   })
 
@@ -245,8 +245,10 @@ describe('UsageLedger', () => {
     await state.annotate('legacy', { archived: true })
     const upgraded = JSON.parse(await fs.readFile(state.file, 'utf8'))
     expect(upgraded).toMatchObject({
-      version: 2,
+      version: 3,
       usageEntries: [],
+      usageBudgets: [],
+      usageAlerts: [],
     })
   })
 })

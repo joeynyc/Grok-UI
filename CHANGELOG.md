@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-07-26
 
 - Started the v0.9 Runtime Intelligence milestone with a persistent,
   provenance-aware usage ledger built on the existing session and workflow
@@ -13,6 +13,16 @@
   token usage.
 - Added a privacy-aware Usage view, authenticated usage API, atomic v1-to-v2
   state migration, and coverage for persistence and mixed telemetry.
+- Added bounded process-tree and listening-port inspection for known Grok
+  process roots, with database, cache, queue, emulator, and development-service
+  classification that never probes arbitrary endpoints.
+- Added structured test-status and external tool-call panels using existing
+  safe telemetry titles, including incomplete interruption state after a
+  session or event-stream disconnect.
+- Added optional local budgets for global, project, model, session, and agent
+  scopes; deduplicated 80% and 100% alerts; and atomic v3 state migration.
+- Added bounded JSON/CSV usage exports with Privacy Mode redaction applied by
+  the authenticated server before download.
 
 ## 0.8.2 — 2026-07-26
 

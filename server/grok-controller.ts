@@ -174,6 +174,7 @@ export class GrokController extends EventEmitter {
     return {
       generatedAt: now(),
       connected: this.connected,
+      processId: this.process?.pid || 0,
       starting: this.starting,
       reconnecting: Boolean(this.reconnectTimer) || (this.starting && this.reconnectAttempt > 0),
       reconnectAttempt: this.reconnectAttempt,

@@ -34,7 +34,15 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getAuthStatus, getControlSnapshot, getDashboard, getLiveSnapshot, getSetupStatus, login } from './api'
+import {
+  getAuthStatus,
+  getControlSnapshot,
+  getDashboard,
+  getLiveSnapshot,
+  getRuntimeSnapshot,
+  getSetupStatus,
+  login,
+} from './api'
 import type {
   ActivityDay,
   ControlSnapshot,
@@ -43,6 +51,7 @@ import type {
   LiveFeedItem,
   LiveSnapshot,
   RankedDatum,
+  RuntimeSnapshot,
   SessionRow,
   SetupCheckState,
   SetupStatus,
@@ -54,6 +63,7 @@ import { ControlView } from './views/ControlView'
 import { SessionWorkbench } from './views/SessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
 import { UsageView } from './views/UsageView'
+import { RuntimeIntelligencePanels } from './views/RuntimeIntelligencePanels'
 import { PrivacyProvider, usePrivacy } from './privacy'
 import packageJson from '../package.json'
 
@@ -157,6 +167,7 @@ function App() {
   const [view, setView] = useState<ViewId>('live')
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [live, setLive] = useState<LiveSnapshot | null>(null)
+  const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
   const [control, setControl] = useState<ControlSnapshot | null>(null)
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [streamConnected, setStreamConnected] = useState(false)
@@ -193,12 +204,14 @@ function App() {
   const load = useCallback(async (force = false) => {
     if (force) setRefreshing(true)
     try {
-      const [payload, livePayload] = await Promise.all([
+      const [payload, livePayload, runtimePayload] = await Promise.all([
         getDashboard(force),
         getLiveSnapshot(),
+        getRuntimeSnapshot(force),
       ])
       setData(payload)
       setLive(livePayload)
+      setRuntime(runtimePayload)
       setError('')
       if (payload.stats.sessions === 0) {
         void getSetupStatus(force)
@@ -243,6 +256,10 @@ function App() {
     events.addEventListener('control', (event) => {
       setStreamConnected(true)
       setControl(JSON.parse((event as MessageEvent).data) as ControlSnapshot)
+    })
+    events.addEventListener('runtime', (event) => {
+      setStreamConnected(true)
+      setRuntime(JSON.parse((event as MessageEvent).data) as RuntimeSnapshot)
     })
     events.addEventListener('workspace', (event) => {
       setStreamConnected(true)
@@ -354,6 +371,7 @@ function App() {
             {view === 'live' && (
               <LiveView
                 live={live}
+                runtime={runtime}
                 data={data}
                 setup={setup}
                 connected={streamConnected}
@@ -656,6 +674,7 @@ function TopBar({
 
 function LiveView({
   live,
+  runtime,
   data,
   setup,
   connected,
@@ -663,6 +682,7 @@ function LiveView({
   onRefresh,
 }: {
   live: LiveSnapshot | null
+  runtime: RuntimeSnapshot | null
   data: DashboardPayload
   setup: SetupStatus | null
   connected: boolean
@@ -823,6 +843,7 @@ function LiveView({
           </section>
         </section>
       )}
+      <RuntimeIntelligencePanels runtime={runtime} />
     </>
   )
 }

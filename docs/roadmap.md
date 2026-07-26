@@ -17,13 +17,16 @@ The roadmap extends those foundations instead of replacing them.
 ## v0.9 — Runtime intelligence
 
 - Inspect process trees, open ports, test state, databases, local services, and
-  external tool calls.
+  external tool calls. The bounded runtime inspector and Live panels are
+  implemented without shell execution, endpoint probing, or raw command input.
 - Persist usage across CLI sessions, managed sessions, workflows, projects,
   models, agents, and time periods. The provenance-aware ledger and reporting
   API are now implemented on the v0.9 development branch.
 - Identify each usage value as Grok-reported, derived, incomplete, or
   unavailable. The first Usage view now exposes those labels directly.
-- Add optional budgets, alerts, and exports.
+- Add optional budgets, alerts, and exports. Budgets now persist locally,
+  evaluate non-overlapping ledger scopes, deduplicate 80%/100% alerts, and
+  export bounded JSON/CSV with server-side Privacy Mode redaction.
 
 The staged design, security constraints, and release gate are tracked in
 [`v0.9-runtime-intelligence.md`](./v0.9-runtime-intelligence.md).

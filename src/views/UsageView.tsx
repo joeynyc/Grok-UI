@@ -1,16 +1,30 @@
 import {
   CircleDollarSign,
   DatabaseZap,
+  Download,
+  BellRing,
+  Plus,
   RefreshCw,
   Sigma,
+  Trash2,
   WalletCards,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { getUsageReport } from '../api'
+import {
+  acknowledgeUsageAlert,
+  deleteUsageBudget,
+  downloadUsageExport,
+  getUsageBudgets,
+  getUsageReport,
+  saveUsageBudget,
+} from '../api'
 import { usePrivacy } from '../privacy'
 import type {
   UsageGroupDimension,
+  UsageBudgetDimension,
+  UsageBudgetMetric,
+  UsageBudgetSnapshot,
   UsageMetric,
   UsagePeriod,
   UsageReport,
@@ -53,6 +67,14 @@ export function UsageView() {
   const [report, setReport] = useState<UsageReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [budgets, setBudgets] = useState<UsageBudgetSnapshot | null>(null)
+  const [budgetDimension, setBudgetDimension] = useState<UsageBudgetDimension>('global')
+  const [budgetKey, setBudgetKey] = useState('')
+  const [budgetMetric, setBudgetMetric] = useState<UsageBudgetMetric>('tokens')
+  const [budgetLimit, setBudgetLimit] = useState('')
+  const [budgetCurrency, setBudgetCurrency] = useState('USD')
+  const [budgetBusy, setBudgetBusy] = useState(false)
+  const [budgetError, setBudgetError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -75,6 +97,12 @@ export function UsageView() {
     }
   }, [period, scope, groupBy])
 
+  useEffect(() => {
+    void getUsageBudgets().then(setBudgets).catch(() => {
+      // The report remains useful if optional budget state cannot be loaded.
+    })
+  }, [report?.generatedAt])
+
   const totalCost = useMemo(() => costValue(report), [report])
   const visibleLabel = (label: string, key: string) => {
     if (groupBy === 'project') return privacy.workspace(label)
@@ -82,6 +110,35 @@ export function UsageView() {
     if (groupBy === 'agent') return privacy.capability(label, 'Agent')
     return label
   }
+  const refreshBudgets = async () => setBudgets(await getUsageBudgets())
+  const createBudget = async () => {
+    const limit = Number(budgetLimit)
+    if (!Number.isFinite(limit) || limit <= 0) return
+    setBudgetBusy(true)
+    try {
+      const result = await saveUsageBudget({
+        dimension: budgetDimension,
+        key: budgetDimension === 'global' ? undefined : budgetKey,
+        label: budgetDimension === 'global'
+          ? 'All usage'
+          : report?.groups.find((group) => group.key === budgetKey)?.label || budgetKey,
+        metric: budgetMetric,
+        limit,
+        period,
+        currency: budgetMetric === 'cost' ? budgetCurrency : undefined,
+      })
+      setBudgets(result.snapshot)
+      setBudgetLimit('')
+      setBudgetKey('')
+      setBudgetError('')
+    } catch (requestError) {
+      setBudgetError(requestError instanceof Error ? requestError.message : 'Unable to save usage budget.')
+    } finally {
+      setBudgetBusy(false)
+    }
+  }
+  const exportReport = (format: 'json' | 'csv') =>
+    downloadUsageExport({ period, scope, groupBy, format, privacy: privacy.enabled })
 
   return (
     <>
@@ -120,6 +177,13 @@ export function UsageView() {
           <select value={groupBy} onChange={(event) => setGroupBy(event.target.value as UsageGroupDimension)}>
             {GROUPS.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
+        </div>
+        <div className="usage-export-actions">
+          <span>Export</span>
+          <div>
+            <button onClick={() => void exportReport('json')}><Download size={13} /> JSON</button>
+            <button onClick={() => void exportReport('csv')}><Download size={13} /> CSV</button>
+          </div>
         </div>
       </section>
 
@@ -201,6 +265,119 @@ export function UsageView() {
                       : 'Try a wider period or another observation scope.'}
                   </span>
                 </div>
+              </div>
+            )}
+          </section>
+
+          <section className="usage-budget-panel section-gap">
+            <header>
+              <div>
+                <span>08B / GUARDRAILS</span>
+                <h2>Local budgets & alerts</h2>
+              </div>
+              <small><BellRing size={13} /> {budgets?.alerts.filter((alert) => !alert.acknowledgedAt).length || 0} active alerts</small>
+            </header>
+            <div className="usage-budget-form">
+              <label>
+                <span>Scope</span>
+                <select value={budgetDimension} onChange={(event) => {
+                  const next = event.target.value as UsageBudgetDimension
+                  setBudgetDimension(next)
+                  setBudgetKey('')
+                  if (next !== 'global') setGroupBy(next)
+                }}>
+                  {(['global', 'project', 'model', 'session', 'agent'] as UsageBudgetDimension[])
+                    .map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              {budgetDimension !== 'global' && (
+                <label>
+                  <span>Target</span>
+                  <select
+                    value={budgetKey}
+                    onChange={(event) => setBudgetKey(event.target.value)}
+                  >
+                    <option value="">Select {budgetDimension}</option>
+                    {groupBy === budgetDimension && report?.groups.map((group) =>
+                      <option key={group.key} value={group.key}>{visibleLabel(group.label, group.key)}</option>)}
+                  </select>
+                </label>
+              )}
+              <label>
+                <span>Metric</span>
+                <select value={budgetMetric} onChange={(event) => setBudgetMetric(event.target.value as UsageBudgetMetric)}>
+                  <option value="tokens">Tokens</option>
+                  <option value="cost">Reported cost</option>
+                </select>
+              </label>
+              <label>
+                <span>Limit</span>
+                <input type="number" min="0.0001" step="any" value={budgetLimit} onChange={(event) => setBudgetLimit(event.target.value)} />
+              </label>
+              {budgetMetric === 'cost' && (
+                <label>
+                  <span>Currency</span>
+                  <input maxLength={16} value={budgetCurrency} onChange={(event) => setBudgetCurrency(event.target.value.toUpperCase())} />
+                </label>
+              )}
+              <button
+                className="usage-budget-add"
+                disabled={budgetBusy || !budgetLimit || (budgetDimension !== 'global' && !budgetKey)}
+                onClick={() => void createBudget()}
+              >
+                <Plus size={14} /> Add budget
+              </button>
+            </div>
+            <p className="usage-budget-note">
+              Evaluated locally against non-overlapping {budgetDimension === 'agent' ? 'workflow-agent' : 'session'} observations.
+              Alerts fire once at 80% and 100% for each reporting window.
+            </p>
+            {budgetError && <p className="usage-budget-error">{budgetError}</p>}
+            <div className="usage-budget-list">
+              {budgets?.statuses.length ? budgets.statuses.map((status) => {
+                const budgetLabel = status.budget.dimension === 'project'
+                  ? privacy.workspace(status.budget.label)
+                  : status.budget.dimension === 'session'
+                    ? privacy.sessionTitle(status.budget.label, status.budget.key)
+                    : status.budget.dimension === 'agent'
+                      ? privacy.capability(status.budget.label, 'Agent')
+                      : status.budget.label
+                const observed = status.observed.value === null
+                  ? 'Unavailable'
+                  : `${status.observed.value.toLocaleString()}${status.budget.metric === 'cost' ? ` ${status.budget.currency}` : ' tokens'}`
+                return (
+                  <article key={status.budget.id} className={`usage-budget-row is-${status.alertLevel}`}>
+                    <span>
+                      <strong>{budgetLabel}</strong>
+                      <small>{status.budget.dimension} · {status.budget.period.toUpperCase()} · {sourceLabel(status.observed.source)}</small>
+                    </span>
+                    <span>
+                      <strong>{observed}</strong>
+                      <small>of {status.budget.limit.toLocaleString()} {status.budget.metric === 'cost' ? status.budget.currency : 'tokens'}</small>
+                    </span>
+                    <span className="usage-budget-meter"><i style={{ width: `${Math.min((status.percent || 0) * 100, 100)}%` }} /></span>
+                    <button
+                      aria-label={`Delete budget ${budgetLabel}`}
+                      onClick={() => void deleteUsageBudget(status.budget.id).then(refreshBudgets)}
+                    ><Trash2 size={14} /></button>
+                  </article>
+                )
+              }) : (
+                <div className="usage-state">
+                  <BellRing size={22} />
+                  <div><strong>No budgets configured</strong><span>Budgets are optional and never leave this host.</span></div>
+                </div>
+              )}
+            </div>
+            {budgets?.alerts.some((alert) => !alert.acknowledgedAt) && (
+              <div className="usage-alert-list">
+                {budgets.alerts.filter((alert) => !alert.acknowledgedAt).map((alert) => (
+                  <button key={alert.id} onClick={() => void acknowledgeUsageAlert(alert.id).then(setBudgets)}>
+                    <BellRing size={14} />
+                    <span>{Math.round(alert.threshold * 100)}% threshold reached · {alert.observed.toLocaleString()} observed</span>
+                    <small>Acknowledge</small>
+                  </button>
+                ))}
               </div>
             )}
           </section>

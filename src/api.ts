@@ -5,8 +5,13 @@ import type {
   SessionRow,
   SessionWorkbenchData,
   LiveSnapshot,
+  RuntimeSnapshot,
   SetupStatus,
   UsageGroupDimension,
+  UsageBudget,
+  UsageBudgetDimension,
+  UsageBudgetMetric,
+  UsageBudgetSnapshot,
   UsagePeriod,
   UsageReport,
   UsageScope,
@@ -33,6 +38,13 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   return json<LiveSnapshot>(response, 'Live runtime request failed')
 }
 
+export async function getRuntimeSnapshot(force = false): Promise<RuntimeSnapshot> {
+  const response = await fetch(`/api/runtime${force ? '?refresh=1' : ''}`, {
+    headers: { Accept: 'application/json' },
+  })
+  return json<RuntimeSnapshot>(response, 'Runtime intelligence request failed')
+}
+
 export async function getUsageReport(input: {
   period: UsagePeriod
   scope: UsageScope
@@ -45,6 +57,79 @@ export async function getUsageReport(input: {
     }),
     'Usage ledger request failed',
   )
+}
+
+export async function getUsageBudgets(): Promise<UsageBudgetSnapshot> {
+  return json(
+    await fetch('/api/usage/budgets', { headers: { Accept: 'application/json' } }),
+    'Usage budgets request failed',
+  )
+}
+
+export async function saveUsageBudget(input: {
+  id?: string
+  dimension: UsageBudgetDimension
+  key?: string
+  label?: string
+  metric: UsageBudgetMetric
+  limit: number
+  period: UsagePeriod
+  currency?: string
+  enabled?: boolean
+}): Promise<{ budget: UsageBudget; snapshot: UsageBudgetSnapshot }> {
+  return json(
+    await fetch('/api/usage/budgets', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+    'Unable to save usage budget',
+  )
+}
+
+export async function deleteUsageBudget(id: string): Promise<void> {
+  const response = await fetch(`/api/usage/budgets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!response.ok) await json(response, 'Unable to delete usage budget')
+}
+
+export async function acknowledgeUsageAlert(id: string): Promise<UsageBudgetSnapshot> {
+  return json(
+    await fetch(`/api/usage/alerts/${encodeURIComponent(id)}/acknowledge`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    }),
+    'Unable to acknowledge usage alert',
+  )
+}
+
+export async function downloadUsageExport(input: {
+  period: UsagePeriod
+  scope: UsageScope
+  groupBy: UsageGroupDimension
+  format: 'json' | 'csv'
+  privacy: boolean
+}): Promise<void> {
+  const query = new URLSearchParams({
+    period: input.period,
+    scope: input.scope,
+    groupBy: input.groupBy,
+    format: input.format,
+    privacy: input.privacy ? '1' : '0',
+  })
+  const response = await fetch(`/api/usage/export?${query.toString()}`, {
+    headers: { Accept: input.format === 'json' ? 'application/json' : 'text/csv' },
+  })
+  if (!response.ok) {
+    await json(response, 'Usage export failed')
+    return
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `grok-ui-usage.${input.format}`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export async function getSetupStatus(force = false): Promise<SetupStatus> {

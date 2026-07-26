@@ -13,12 +13,17 @@ import type {
   LiveAgent,
   SessionRow,
   UsageGroupDimension,
+  UsageBudgetDimension,
+  UsageBudgetMetric,
   UsagePeriod,
   UsageScope,
 } from './types.js'
 import { APP_VERSION } from './app-version.js'
 import { inspectSetup } from './setup-diagnostics.js'
 import { UsageLedger } from './usage-ledger.js'
+import { RuntimeInspector } from './runtime-inspector.js'
+import { UsageBudgetManager } from './usage-budgets.js'
+import { usageExport, type UsageExportFormat } from './usage-export.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
@@ -30,6 +35,8 @@ await controller.restore()
 const workspaceInspector = new WorkspaceInspector()
 const sessionReader = new SessionReader(store.grokHome)
 const usageLedger = new UsageLedger(sessionState)
+const usageBudgets = new UsageBudgetManager(sessionState, usageLedger)
+const runtimeInspector = new RuntimeInspector()
 const port = Number(process.env.PORT || 4310)
 const host = process.env.HOST || '127.0.0.1'
 const security = new SecurityGate(host)
@@ -62,14 +69,17 @@ function scheduleUsageSync(): void {
 
 liveMonitor.on('live', (payload) => {
   broadcast('live', payload)
+  runtimeInspector.update(payload, controller.snapshot())
   scheduleUsageSync()
 })
 liveMonitor.on('dashboard', (payload) => broadcast('dashboard', payload))
 controller.on('control', (payload) => {
   broadcast('control', payload)
+  runtimeInspector.update(liveMonitor.snapshot(), payload)
   scheduleUsageSync()
 })
 workspaceInspector.on('change', (payload) => broadcast('workspace', payload))
+runtimeInspector.on('runtime', (payload) => broadcast('runtime', payload))
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '64kb' }))
@@ -100,6 +110,15 @@ app.get('/api/live', (_request, response) => {
   response.json(liveMonitor.snapshot())
 })
 
+app.get('/api/runtime', async (request, response, next) => {
+  try {
+    if (request.query.refresh === '1') await runtimeInspector.refresh()
+    response.json(runtimeInspector.snapshot())
+  } catch (error) {
+    next(error)
+  }
+})
+
 const USAGE_PERIODS = new Set<UsagePeriod>(['24h', '7d', '30d', '90d', 'all'])
 const USAGE_SCOPES = new Set<UsageScope>(['sessions', 'workflow-agents', 'all'])
 const USAGE_GROUPS = new Set<UsageGroupDimension>(['project', 'model', 'session', 'agent'])
@@ -127,6 +146,82 @@ app.get('/api/usage', async (request, response, next) => {
       scope: scope as UsageScope,
       groupBy: groupBy as UsageGroupDimension,
     }))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/usage/budgets', async (_request, response, next) => {
+  try {
+    await syncUsage()
+    response.json(await usageBudgets.snapshot())
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/usage/budgets', async (request, response) => {
+  try {
+    const body = request.body as Record<string, unknown>
+    const budget = await usageBudgets.upsert({
+      id: typeof body.id === 'string' ? body.id : undefined,
+      dimension: body.dimension as UsageBudgetDimension,
+      key: typeof body.key === 'string' ? body.key : undefined,
+      label: typeof body.label === 'string' ? body.label : undefined,
+      metric: body.metric as UsageBudgetMetric,
+      limit: Number(body.limit),
+      period: body.period as UsagePeriod,
+      currency: typeof body.currency === 'string' ? body.currency : undefined,
+      enabled: body.enabled !== false,
+    })
+    await syncUsage()
+    response.status(201).json({ budget, snapshot: await usageBudgets.snapshot() })
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Invalid budget.' })
+  }
+})
+
+app.delete('/api/usage/budgets/:id', async (request, response) => {
+  const removed = await usageBudgets.remove(request.params.id)
+  if (!removed) {
+    response.status(404).json({ error: 'Budget not found.' })
+    return
+  }
+  response.status(204).end()
+})
+
+app.post('/api/usage/alerts/:id/acknowledge', async (request, response) => {
+  const acknowledged = await usageBudgets.acknowledge(request.params.id)
+  if (!acknowledged) {
+    response.status(404).json({ error: 'Usage alert not found.' })
+    return
+  }
+  response.json(await usageBudgets.snapshot())
+})
+
+app.get('/api/usage/export', async (request, response, next) => {
+  try {
+    const period = typeof request.query.period === 'string' ? request.query.period : '30d'
+    const scope = typeof request.query.scope === 'string' ? request.query.scope : 'sessions'
+    const groupBy = typeof request.query.groupBy === 'string' ? request.query.groupBy : 'project'
+    const format = typeof request.query.format === 'string' ? request.query.format : 'json'
+    if (!USAGE_PERIODS.has(period as UsagePeriod)
+      || !USAGE_SCOPES.has(scope as UsageScope)
+      || !USAGE_GROUPS.has(groupBy as UsageGroupDimension)
+      || !['json', 'csv'].includes(format)) {
+      response.status(400).json({ error: 'Invalid usage export options.' })
+      return
+    }
+    await syncUsage()
+    const exported = usageExport(usageLedger.report({
+      period: period as UsagePeriod,
+      scope: scope as UsageScope,
+      groupBy: groupBy as UsageGroupDimension,
+    }), format as UsageExportFormat, request.query.privacy === '1')
+    response.setHeader('Content-Type', exported.contentType)
+    response.setHeader('Content-Disposition', `attachment; filename="grok-ui-usage.${exported.extension}"`)
+    response.setHeader('Cache-Control', 'no-store')
+    response.send(exported.body)
   } catch (error) {
     next(error)
   }
@@ -411,6 +506,7 @@ app.get('/api/events', (request, response) => {
   response.write(`event: ready\ndata: ${JSON.stringify({ connected: true })}\n\n`)
   response.write(`event: live\ndata: ${JSON.stringify(liveMonitor.snapshot())}\n\n`)
   response.write(`event: control\ndata: ${JSON.stringify(controller.snapshot())}\n\n`)
+  response.write(`event: runtime\ndata: ${JSON.stringify(runtimeInspector.snapshot())}\n\n`)
   void store.dashboard().then((payload) => {
     response.write(`event: dashboard\ndata: ${JSON.stringify(payload)}\n\n`)
   })
@@ -447,6 +543,8 @@ app.use((
 })
 
 await liveMonitor.start()
+runtimeInspector.update(liveMonitor.snapshot(), controller.snapshot())
+await runtimeInspector.start()
 await syncUsage()
 
 export const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
@@ -467,7 +565,12 @@ console.log(`Remote authentication ${security.authRequired ? 'enabled' : 'not re
 async function shutdown() {
   if (usageSyncTimer) clearTimeout(usageSyncTimer)
   server.close()
-  await Promise.all([liveMonitor.stop(), controller.stop(), workspaceInspector.close()])
+  await Promise.all([
+    liveMonitor.stop(),
+    runtimeInspector.stop(),
+    controller.stop(),
+    workspaceInspector.close(),
+  ])
   process.exit(0)
 }
 

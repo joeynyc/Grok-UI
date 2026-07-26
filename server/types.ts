@@ -251,6 +251,7 @@ export interface ControlPermission {
 export interface ControlSnapshot {
   generatedAt: string
   connected: boolean
+  processId: number
   starting: boolean
   reconnecting: boolean
   reconnectAttempt: number
@@ -306,6 +307,89 @@ export interface SessionWorkbenchData {
   control: ControlSession | null
   permissions: ControlPermission[]
   managed: boolean
+}
+
+export type RuntimeProcessState = 'running' | 'sleeping' | 'stopped' | 'zombie' | 'unknown'
+export type RuntimeBindScope = 'loopback' | 'all' | 'lan' | 'unknown'
+export type RuntimeServiceKind =
+  | 'database'
+  | 'cache'
+  | 'queue'
+  | 'emulator'
+  | 'dev-server'
+  | 'web'
+  | 'other'
+export type RuntimeTestStatus = 'running' | 'passed' | 'failed' | 'interrupted' | 'unknown'
+export type ExternalCallCategory = 'network' | 'browser' | 'mcp' | 'cloud' | 'vcs'
+
+export interface RuntimeRoot {
+  pid: number
+  managed: boolean
+  sessionIds: string[]
+  workspaces: string[]
+}
+
+export interface RuntimeProcess {
+  pid: number
+  parentPid: number
+  rootPid: number
+  depth: number
+  name: string
+  state: RuntimeProcessState
+  elapsed: string
+  sessionIds: string[]
+  workspaces: string[]
+  ports: number[]
+}
+
+export interface RuntimePort {
+  pid: number
+  port: number
+  protocol: 'tcp'
+  bind: RuntimeBindScope
+}
+
+export interface RuntimeService {
+  id: string
+  pid: number
+  name: string
+  kind: RuntimeServiceKind
+  port: number
+  bind: RuntimeBindScope
+  status: 'listening' | 'running'
+}
+
+export interface RuntimeTestRun {
+  id: string
+  sessionId: string
+  title: string
+  framework: string
+  status: RuntimeTestStatus
+  startedAt: string
+  updatedAt: string
+  incomplete: boolean
+}
+
+export interface ExternalToolCall {
+  id: string
+  sessionId: string
+  title: string
+  category: ExternalCallCategory
+  status: string
+  updatedAt: string
+}
+
+export interface RuntimeSnapshot {
+  generatedAt: string
+  available: boolean
+  partial: boolean
+  error: string
+  roots: RuntimeRoot[]
+  processes: RuntimeProcess[]
+  ports: RuntimePort[]
+  services: RuntimeService[]
+  tests: RuntimeTestRun[]
+  externalCalls: ExternalToolCall[]
 }
 
 export type UsageSource = 'grok-reported' | 'derived' | 'incomplete' | 'unavailable'
@@ -364,4 +448,48 @@ export interface UsageReport {
   totals: UsageReportGroup
   groups: UsageReportGroup[]
   coverage: Record<UsageSource, number>
+}
+
+export type UsageBudgetDimension = 'global' | UsageGroupDimension
+export type UsageBudgetMetric = 'tokens' | 'cost'
+
+export interface UsageBudget {
+  id: string
+  dimension: UsageBudgetDimension
+  key: string
+  label: string
+  metric: UsageBudgetMetric
+  limit: number
+  period: UsagePeriod
+  currency: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UsageBudgetAlert {
+  id: string
+  budgetId: string
+  threshold: number
+  observed: number
+  limit: number
+  source: UsageSource
+  periodFrom: string
+  createdAt: string
+  acknowledgedAt: string
+}
+
+export interface UsageBudgetStatus {
+  budget: UsageBudget
+  observed: UsageMetric
+  percent: number | null
+  alertLevel: 'none' | 'warning' | 'exceeded' | 'unavailable'
+  periodFrom: string
+  periodTo: string
+}
+
+export interface UsageBudgetSnapshot {
+  generatedAt: string
+  statuses: UsageBudgetStatus[]
+  alerts: UsageBudgetAlert[]
 }
