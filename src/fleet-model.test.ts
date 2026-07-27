@@ -63,16 +63,27 @@ describe('fleet section availability', () => {
   it('labels cached snapshots as historical while connecting or unavailable', () => {
     expect(sectionAvailability(host('connecting', true), 'sessions')).toBe('stale')
     expect(sectionAvailability(host('unavailable', true), 'sessions')).toBe('stale')
+    expect(sectionAvailability(host('incompatible', true), 'sessions')).toBe('stale')
+    expect(sectionAvailability(host('unauthorized', true), 'sessions')).toBe('stale')
   })
 
   it('keeps first-contact connecting distinct from unavailable data', () => {
     expect(sectionAvailability(host('connecting', false), 'sessions')).toBe('connecting')
     expect(sectionAvailability(host('unavailable', false), 'sessions')).toBe('unavailable')
+    expect(sectionAvailability(host('incompatible', false), 'sessions')).toBe('incompatible')
+    expect(sectionAvailability(host('unauthorized', false), 'sessions')).toBe('unauthorized')
   })
 
   it('marks incompatible and disabled prior observations as historical', () => {
     expect(isHistoricalHost(host('incompatible', true))).toBe(true)
     expect(isHistoricalHost(host('unavailable', true))).toBe(true)
     expect(isHistoricalHost(host('healthy', true))).toBe(false)
+  })
+
+  it('labels a retained sample historical after a recent degraded failure', () => {
+    const failed = host('degraded', true)
+    failed.consecutiveFailures = 1
+    expect(sectionAvailability(failed, 'sessions')).toBe('stale')
+    expect(isHistoricalHost(failed)).toBe(true)
   })
 })

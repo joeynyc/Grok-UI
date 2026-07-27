@@ -101,11 +101,12 @@ export function sectionAvailability(
   host: FleetHostView,
   section: FleetSectionId,
 ): SectionAvailability {
-  if (host.status === 'unauthorized') return 'unauthorized'
-  if (host.status === 'incompatible') return 'incompatible'
+  if (host.status === 'unauthorized') return host.snapshot ? 'stale' : 'unauthorized'
+  if (host.status === 'incompatible') return host.snapshot ? 'stale' : 'incompatible'
   if (host.status === 'connecting') return host.snapshot ? 'stale' : 'connecting'
   if (host.status === 'unavailable') return host.snapshot ? 'stale' : 'unavailable'
   if (host.status === 'stale' || host.status === 'offline') return 'stale'
+  if (host.status === 'degraded' && host.consecutiveFailures > 0 && host.snapshot) return 'stale'
   const declared = host.snapshot?.sections[section]
   if (declared) return declared
   return hasCapability(host, section) ? 'available' : 'unavailable'

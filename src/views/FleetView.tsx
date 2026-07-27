@@ -309,7 +309,9 @@ export function FleetView({
               {TABS.map((item) => {
                 const Icon = item.icon
                 const section = item.id === 'overview' ? null : item.id as FleetSectionId
-                const available = !section || sectionAvailability(selected, section) === 'available'
+                const availability = section ? sectionAvailability(selected, section) : 'available'
+                const available = availability === 'available' || availability === 'partial'
+                const historical = availability === 'stale' && Boolean(selected.snapshot)
                 return (
                   <button
                     type="button"
@@ -322,7 +324,7 @@ export function FleetView({
                   >
                     <Icon size={14} />
                     {item.label}
-                    {!available && <i aria-label="Unavailable" />}
+                    {!available && <i aria-label={historical ? 'Historical snapshot' : 'Unavailable'} />}
                   </button>
                 )
               })}
