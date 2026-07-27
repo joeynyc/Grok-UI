@@ -493,3 +493,140 @@ export interface UsageBudgetSnapshot {
   statuses: UsageBudgetStatus[]
   alerts: UsageBudgetAlert[]
 }
+
+export type FleetTransportKind = 'direct' | 'tailscale' | 'ssh'
+export type FleetHostStatus =
+  | 'connecting'
+  | 'healthy'
+  | 'degraded'
+  | 'stale'
+  | 'offline'
+  | 'incompatible'
+  | 'unauthorized'
+  | 'unavailable'
+export type FleetFreshness = 'unknown' | 'fresh' | 'aging' | 'stale' | 'expired'
+export type AgentCapability =
+  | 'sessions.list'
+  | 'sessions.detail'
+  | 'workflows.list'
+  | 'runtime.snapshot'
+  | 'usage.report'
+
+export interface FleetHostConfig {
+  id: string
+  label: string
+  transport: FleetTransportKind
+  baseUrl: string
+  token: string
+  sshTarget: string
+  sshPort: number
+  localPort: number
+  remotePort: number
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FleetHostPublicConfig extends Omit<FleetHostConfig, 'token'> {
+  hasToken: boolean
+}
+
+export interface AgentHostIdentity {
+  id: string
+  label: string
+  hostname: string
+  platform: string
+  arch: string
+}
+
+export interface AgentHello {
+  protocolVersion: number
+  protocolMin: number
+  protocolMax: number
+  generatedAt: string
+  host: AgentHostIdentity
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+}
+
+export interface AgentSnapshot {
+  protocolVersion: number
+  generatedAt: string
+  host: AgentHostIdentity
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+  health: {
+    status: 'healthy' | 'degraded'
+    detail: string
+  }
+  sessions: SessionRow[]
+  workflows: WorkflowRun[]
+  runtime: RuntimeSnapshot | null
+  usage: UsageReport | null
+  sections: {
+    sessions: 'available' | 'partial' | 'unavailable'
+    workflows: 'available' | 'partial' | 'unavailable'
+    runtime: 'available' | 'partial' | 'unavailable'
+    usage: 'available' | 'partial' | 'unavailable'
+  }
+  truncated: {
+    sessions: boolean
+    workflows: boolean
+    usageEntries: boolean
+  }
+}
+
+export interface AgentSessionDetail {
+  protocolVersion: number
+  generatedAt: string
+  hostId: string
+  session: SessionRow
+  transcript: LiveFeedItem[]
+  live: LiveAgent | null
+  control: Omit<ControlSession, 'workflows'> | null
+  workflows: WorkflowRun[]
+  managed: boolean
+}
+
+export interface FleetHostView {
+  id: string
+  label: string
+  transport: FleetTransportKind
+  status: FleetHostStatus
+  statusDetail: string
+  freshness: FleetFreshness
+  latencyMs: number | null
+  lastSeen: string
+  lastAttemptAt: string
+  consecutiveFailures: number
+  host: AgentHostIdentity | null
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+  snapshot: AgentSnapshot | null
+  config: FleetHostPublicConfig
+}
+
+export interface FleetSnapshot {
+  generatedAt: string
+  protocolVersion: number
+  registryError: string
+  pollIntervalMs: number
+  staleAfterMs: number
+  offlineAfterMs: number
+  hosts: FleetHostView[]
+  totals: {
+    hosts: number
+    healthy: number
+    degraded: number
+    stale: number
+    offline: number
+    sessions: number
+    workflows: number
+  }
+}

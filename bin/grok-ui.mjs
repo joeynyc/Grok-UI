@@ -14,6 +14,7 @@ Grok UI ${manifest.version}
 
 Usage:
   grok-ui [start] [options]
+  grok-ui agent [options]
   grok-ui doctor
 
 Options:
@@ -27,6 +28,9 @@ Options:
 
 Remote binds require GROK_UI_TOKEN. Run \`grok-ui doctor\` to check the
 local Node.js, Grok CLI, authentication, and state prerequisites.
+
+The read-only host agent uses port 4311 by default and always requires
+GROK_UI_AGENT_TOKEN, including on loopback.
 `.trim())
 }
 
@@ -61,9 +65,10 @@ async function main() {
     await import('../scripts/doctor.mjs')
     return
   }
-  if (command !== 'start') throw new Error(`Unknown command: ${command}`)
+  if (command !== 'start' && command !== 'agent') throw new Error(`Unknown command: ${command}`)
 
-  let open = true
+  const agentMode = command === 'agent'
+  let open = !agentMode
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index]
     if (flag === '--help' || flag === '-h') {
@@ -84,12 +89,14 @@ async function main() {
       if (!Number.isInteger(port) || port < 1 || port > 65_535) {
         throw new Error('--port must be an integer between 1 and 65535.')
       }
-      process.env.PORT = String(port)
+      if (agentMode) process.env.GROK_UI_AGENT_PORT = String(port)
+      else process.env.PORT = String(port)
       index += 1
       continue
     }
     if (flag === '--host') {
-      process.env.HOST = takeValue(args, index, flag)
+      if (agentMode) process.env.GROK_UI_AGENT_HOST = takeValue(args, index, flag)
+      else process.env.HOST = takeValue(args, index, flag)
       index += 1
       continue
     }
@@ -106,6 +113,10 @@ async function main() {
     throw new Error(`Unknown option: ${flag}`)
   }
 
+  if (agentMode) {
+    await import('../dist-server/host-agent-entry.js')
+    return
+  }
   const runtime = await import('../dist-server/index.js')
   if (open) openBrowser(runtime.serverUrl)
 }

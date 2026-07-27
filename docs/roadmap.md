@@ -1,9 +1,9 @@
 # Grok UI roadmap
 
-Grok UI v0.8.1 already provides local session discovery, ACP control,
-confirmed interruption, workflow orchestration, Git inspection, reported
-session cost, managed-session token totals, and per-agent workflow tokens.
-The roadmap extends those foundations instead of replacing them.
+Grok UI v0.9.0 provides local session discovery, ACP control, confirmed
+interruption, workflow orchestration, Git and runtime inspection, a persistent
+usage ledger, budgets, and privacy-aware exports. The roadmap extends those
+foundations instead of replacing them.
 
 ## v0.8.2 — Release and recovery
 
@@ -21,7 +21,7 @@ The roadmap extends those foundations instead of replacing them.
   implemented without shell execution, endpoint probing, or raw command input.
 - Persist usage across CLI sessions, managed sessions, workflows, projects,
   models, agents, and time periods. The provenance-aware ledger and reporting
-  API are now implemented on the v0.9 development branch.
+  API shipped in v0.9.0.
 - Identify each usage value as Grok-reported, derived, incomplete, or
   unavailable. The first Usage view now exposes those labels directly.
 - Add optional budgets, alerts, and exports. Budgets now persist locally,
@@ -34,10 +34,18 @@ The staged design, security constraints, and release gate are tracked in
 ## v0.10 — Multi-machine monitoring
 
 - Introduce a lightweight host agent and central host registry.
-- Support secure SSH- and Tailscale-oriented connectivity.
-- Report host identity, version, capabilities, health, latency, and stale
-  state.
-- Keep the first multi-machine release read-only.
+- Support authenticated SSH-forwarded and Tailscale-oriented connectivity
+  without invoking a shell or probing arbitrary endpoints.
+- Report host identity, Grok UI and agent versions, capabilities, health,
+  latency, last seen, and freshness.
+- Make connecting, healthy, degraded, stale, offline, incompatible,
+  unauthorized, and unavailable behavior explicit.
+- Aggregate remote sessions, workflows, runtime state, and usage while keeping
+  the first multi-machine release strictly read-only.
+
+The protocol, security constraints, verification matrix, and approval-gated
+release plan are tracked in
+[`v0.10-multi-machine-monitoring.md`](./v0.10-multi-machine-monitoring.md).
 
 ## v0.11 — Secure remote control
 

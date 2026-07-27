@@ -92,7 +92,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
   return (
     <>
       <section className="page-intro changes-intro">
-        <div className="page-intro-index">04 / 10</div>
+        <div className="page-intro-index">04 / 12</div>
         <div className="page-intro-copy">
           <div className="kicker"><Braces size={14} /> Change surface</div>
           <h1>See the work.<br /><em>Before it lands.</em></h1>

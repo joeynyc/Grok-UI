@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.10.0 — Unreleased
+
+- Added a lightweight, bearer-authenticated host agent that reuses the existing
+  session, workflow, runtime, and usage projections through a versioned
+  read-only protocol.
+- Added an atomic, private `fleet.json` registry for up to 32 explicitly trusted
+  hosts, separate from existing session and usage state.
+- Added managed SSH loopback forwarding with fixed argument-separated options,
+  constrained Tailscale endpoints, and an advanced loopback-only direct
+  transport.
+- Added bounded multi-host polling with a 5-second interval, 3.5-second request
+  timeout, global four-read concurrency cap, 2 MiB per-agent and 4 MiB central
+  aggregate limits, manual redirect rejection, and exponential failure backoff.
+- Added explicit connecting, healthy, degraded, stale, offline, incompatible,
+  unauthorized, and unavailable host behavior with latency, last-seen, and
+  freshness reporting.
+- Added the Fleet view for read-only remote sessions, workflow runs, runtime
+  state, and provenance-aware usage, with host-scoped identifiers and Privacy
+  Mode aliases.
+- Removed remote mutation capability from every host-agent projection:
+  workflow controls are forced off, workflow control handles and managed-session
+  last-prompt fields are omitted, and the agent rejects methods other than
+  `GET` and `HEAD`.
+- Expanded the release gate to run the production dependency audit and require
+  current multi-host integration, browser, 75-second soak, packed-install,
+  privacy, and security evidence.
+
+v0.10 remains unreleased. It must not be merged, tagged, published, or released
+until the completion matrix passes and the user explicitly approves those
+actions.
+
 ## 0.9.0 — 2026-07-26
 
 - Started the v0.9 Runtime Intelligence milestone with a persistent,

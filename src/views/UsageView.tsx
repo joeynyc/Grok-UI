@@ -143,7 +143,7 @@ export function UsageView() {
   return (
     <>
       <header className="page-intro">
-        <div className="intro-index">08 / 11</div>
+        <div className="intro-index">08 / 12</div>
         <div>
           <div className="kicker">Persistent usage ledger</div>
           <h1>Know what was used,<br /><em>and how we know.</em></h1>

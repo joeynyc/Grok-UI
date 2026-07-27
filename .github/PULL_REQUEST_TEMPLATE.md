@@ -9,6 +9,8 @@
 - [ ] Desktop behavior checked
 - [ ] Mobile behavior checked when UI changed
 - [ ] No credentials, prompts, private source, personal names, local paths, or IP addresses added
+- [ ] Fleet changes preserve authenticated, bounded, read-only remote access
+- [ ] Fleet changes cover compatibility, failure, freshness, and reconnect states
 
 ## Screenshots
 

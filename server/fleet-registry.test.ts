@@ -1,0 +1,112 @@
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { FleetRegistryStore, publicHostConfig } from './fleet-registry.js'
+import { sshTunnelArgs } from './fleet-connectors.js'
+
+const cleanup: string[] = []
+
+afterEach(async () => {
+  await Promise.all(cleanup.splice(0).map((directory) =>
+    fs.rm(directory, { recursive: true, force: true })))
+})
+
+async function registry(): Promise<FleetRegistryStore> {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-fleet-'))
+  cleanup.push(directory)
+  const store = new FleetRegistryStore(directory)
+  await store.load()
+  return store
+}
+
+describe('FleetRegistryStore', () => {
+  it('persists tokens in a user-only atomic registry without exposing them publicly', async () => {
+    const store = await registry()
+    const host = await store.create({
+      label: 'Local observer',
+      transport: 'direct',
+      baseUrl: 'http://127.0.0.1:4311',
+      token: 'fleet-secret',
+    })
+    const stat = await fs.stat(store.file)
+    const directoryStat = await fs.stat(store.directory)
+    expect(stat.mode & 0o777).toBe(0o600)
+    expect(directoryStat.mode & 0o777).toBe(0o700)
+    expect(publicHostConfig(host)).toMatchObject({
+      id: host.id,
+      hasToken: true,
+    })
+    expect(publicHostConfig(host)).not.toHaveProperty('token')
+
+    const restored = new FleetRegistryStore(store.directory)
+    await restored.load()
+    expect(restored.get(host.id)?.token).toBe('fleet-secret')
+  })
+
+  it('restricts direct and Tailscale destinations and builds one fixed SSH tunnel', async () => {
+    const store = await registry()
+    await expect(store.create({
+      label: 'Unsafe direct',
+      transport: 'direct',
+      baseUrl: 'http://example.com:4311',
+      token: 'secret',
+    })).rejects.toThrow('loopback')
+    await expect(store.create({
+      label: 'Unsafe tailnet',
+      transport: 'tailscale',
+      baseUrl: 'https://example.com',
+      token: 'secret',
+    })).rejects.toThrow('Tailscale')
+
+    const tailnet = await store.create({
+      label: 'Tailnet workstation',
+      transport: 'tailscale',
+      baseUrl: 'https://build-box.tailnet.ts.net:4311',
+      token: 'secret',
+    })
+    expect(tailnet.baseUrl).toBe('https://build-box.tailnet.ts.net:4311')
+
+    const ssh = await store.create({
+      label: 'SSH workstation',
+      transport: 'ssh',
+      token: 'secret',
+      sshTarget: 'builder@workstation',
+      sshPort: 2222,
+      localPort: 14311,
+      remotePort: 4311,
+    })
+    expect(sshTunnelArgs(ssh, 3_500)).toEqual([
+      '-N', '-T',
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=4',
+      '-o', 'ExitOnForwardFailure=yes',
+      '-o', 'ServerAliveInterval=10',
+      '-o', 'ServerAliveCountMax=2',
+      '-p', '2222',
+      '-L', '127.0.0.1:14311:127.0.0.1:4311',
+      '--',
+      'builder@workstation',
+    ])
+  })
+
+  it('preserves a malformed or future registry and keeps the central UI loadable', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-fleet-corrupt-'))
+    cleanup.push(directory)
+    const file = path.join(directory, 'fleet.json')
+    await fs.writeFile(file, '{"version":99,"hosts":[{"token":"keep-me"}]}', { mode: 0o600 })
+    const store = new FleetRegistryStore(directory)
+    await store.load()
+
+    expect(store.list()).toEqual([])
+    expect(store.error).toContain('preserved')
+    await expect(store.create({
+      label: 'Would overwrite',
+      transport: 'direct',
+      baseUrl: 'http://127.0.0.1:4311',
+      token: 'new-token',
+    })).rejects.toThrow('preserved')
+    expect(await fs.readFile(file, 'utf8')).toContain('"version":99')
+    expect(await fs.readFile(file, 'utf8')).toContain('keep-me')
+  })
+})

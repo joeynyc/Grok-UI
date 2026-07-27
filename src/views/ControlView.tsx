@@ -169,7 +169,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
   return (
     <>
       <section className="page-intro command-intro">
-        <div className="page-intro-index">02 / 10</div>
+        <div className="page-intro-index">02 / 12</div>
         <div className="page-intro-copy">
           <div className="kicker"><Command size={14} /> Command deck</div>
           <h1>Don’t just watch.<br /><em>Run the room.</em></h1>

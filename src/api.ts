@@ -1,7 +1,12 @@
 import type {
+  AgentSessionDetail,
   ControlSession,
   ControlSnapshot,
   DashboardPayload,
+  FleetHostInput,
+  FleetHostMutationResponse,
+  FleetHostView,
+  FleetSnapshot,
   SessionRow,
   SessionWorkbenchData,
   LiveSnapshot,
@@ -20,10 +25,115 @@ import type {
   WorkspaceSnapshot,
 } from './types'
 
+const JSON_RESPONSE_CAP = 5 * 1024 * 1024
+const DEFAULT_TIMEOUT_MS = 12_000
+const FLEET_HOST_CAP = 32
+const FLEET_STATUSES = new Set([
+  'connecting',
+  'healthy',
+  'degraded',
+  'stale',
+  'offline',
+  'incompatible',
+  'unauthorized',
+  'unavailable',
+])
+
 async function json<T>(response: Response, fallback: string): Promise<T> {
-  const payload = await response.json().catch(() => ({})) as { error?: string }
+  const declaredLength = Number(response.headers.get('content-length') || 0)
+  if (declaredLength > JSON_RESPONSE_CAP) throw new Error(`${fallback}: response exceeded the safe size limit`)
+  const text = await response.text()
+  if (text.length > JSON_RESPONSE_CAP) throw new Error(`${fallback}: response exceeded the safe size limit`)
+  let payload: { error?: string } = {}
+  try {
+    payload = text ? JSON.parse(text) as { error?: string } : {}
+  } catch {
+    throw new Error(`${fallback}: invalid JSON response`)
+  }
   if (!response.ok) throw new Error(payload.error || `${fallback} (${response.status})`)
   return payload as T
+}
+
+async function boundedFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1_000)} seconds`)
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function parseFleetHost(value: unknown): FleetHostView {
+  const host = record(value)
+  const config = record(host?.config)
+  if (
+    !host
+    || typeof host.id !== 'string'
+    || typeof host.label !== 'string'
+    || !['direct', 'tailscale', 'ssh'].includes(String(host.transport))
+    || !FLEET_STATUSES.has(String(host.status))
+    || !config
+    || 'token' in config
+  ) {
+    throw new Error('Fleet registry returned an invalid public host record')
+  }
+  const snapshot = record(host.snapshot)
+  if (
+    snapshot
+    && (
+      !Array.isArray(snapshot.sessions)
+      || snapshot.sessions.length > 200
+      || !Array.isArray(snapshot.workflows)
+      || snapshot.workflows.length > 100
+      || (record(snapshot.usage) && Array.isArray(record(snapshot.usage)?.entries)
+        && (record(snapshot.usage)?.entries as unknown[]).length > 1_000)
+    )
+  ) {
+    throw new Error('Fleet host snapshot exceeded the negotiated collection caps')
+  }
+  return host as unknown as FleetHostView
+}
+
+export function parseFleetSnapshot(value: unknown): FleetSnapshot {
+  const snapshot = record(value)
+  if (
+    !snapshot
+    || typeof snapshot.generatedAt !== 'string'
+    || typeof snapshot.protocolVersion !== 'number'
+    || !Array.isArray(snapshot.hosts)
+    || snapshot.hosts.length > FLEET_HOST_CAP
+    || !record(snapshot.totals)
+  ) {
+    throw new Error('Fleet registry returned an invalid snapshot')
+  }
+  return {
+    ...(snapshot as unknown as FleetSnapshot),
+    hosts: snapshot.hosts.map(parseFleetHost),
+  }
+}
+
+function parseFleetMutation(value: unknown): FleetHostMutationResponse {
+  const result = record(value)
+  const publicHost = record(result?.host)
+  if (!result || !publicHost || typeof publicHost.id !== 'string' || 'token' in publicHost) {
+    throw new Error('Fleet registry returned an invalid mutation response')
+  }
+  return {
+    host: publicHost as unknown as FleetHostMutationResponse['host'],
+    fleet: parseFleetSnapshot(result.fleet),
+  }
 }
 
 export async function getDashboard(force = false): Promise<DashboardPayload> {
@@ -248,4 +358,63 @@ export async function cancelWorkbenchSession(sessionId: string): Promise<void> {
   await json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/cancel`, {
     method: 'POST',
   }), 'Unable to cancel session')
+}
+
+export async function getFleetSnapshot(): Promise<FleetSnapshot> {
+  return parseFleetSnapshot(await json<unknown>(
+    await boundedFetch('/api/fleet', { headers: { Accept: 'application/json' } }),
+    'Fleet registry request failed',
+  ))
+}
+
+export async function createFleetHost(input: FleetHostInput): Promise<FleetHostMutationResponse> {
+  return parseFleetMutation(await json<unknown>(
+    await boundedFetch('/api/fleet/hosts', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+    'Unable to register host',
+  ))
+}
+
+export async function updateFleetHost(
+  id: string,
+  input: FleetHostInput,
+): Promise<FleetHostMutationResponse> {
+  return parseFleetMutation(await json<unknown>(
+    await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+    'Unable to update host',
+  ))
+}
+
+export async function deleteFleetHost(id: string): Promise<void> {
+  const response = await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) await json(response, 'Unable to remove host')
+}
+
+export async function refreshFleetHost(id: string): Promise<FleetSnapshot> {
+  return parseFleetSnapshot(await json<unknown>(
+    await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    }, 20_000),
+    'Unable to refresh host',
+  ))
+}
+
+export async function getFleetSessionDetail(hostId: string, sessionId: string): Promise<AgentSessionDetail> {
+  return json(
+    await boundedFetch(
+      `/api/fleet/hosts/${encodeURIComponent(hostId)}/sessions/${encodeURIComponent(sessionId)}`,
+      { headers: { Accept: 'application/json' } },
+    ),
+    'Remote session request failed',
+  )
 }

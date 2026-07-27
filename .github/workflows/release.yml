@@ -35,6 +35,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run verify
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run test:e2e
       - name: Run control soak when available
         run: npm run --if-present test:soak

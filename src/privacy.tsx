@@ -10,6 +10,8 @@ export interface PrivacyTools {
   file: (value: string) => string
   capability: (value: string, kind?: string) => string
   memory: (value: string) => string
+  host: (value: string, id?: string) => string
+  endpoint: (value: string) => string
 }
 
 const passthrough: PrivacyTools = {
@@ -22,6 +24,8 @@ const passthrough: PrivacyTools = {
   file: (value) => value,
   capability: (value) => value,
   memory: (value) => value,
+  host: (value) => value,
+  endpoint: (value) => value,
 }
 
 const PrivacyContext = createContext<PrivacyTools>(passthrough)
@@ -47,6 +51,8 @@ export function createPrivacyTools(enabled: boolean): PrivacyTools {
     file: (value) => `file-${alias(value).toLowerCase()}`,
     capability: (value, kind = 'Capability') => `${kind} ${alias(value)}`,
     memory: (value) => `Memory ${alias(value)}`,
+    host: (value, id) => `Host ${alias(id || value)}`,
+    endpoint: (value) => `private-host-${alias(value).toLowerCase()}`,
   }
 }
 

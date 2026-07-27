@@ -24,10 +24,14 @@ import { UsageLedger } from './usage-ledger.js'
 import { RuntimeInspector } from './runtime-inspector.js'
 import { UsageBudgetManager } from './usage-budgets.js'
 import { usageExport, type UsageExportFormat } from './usage-export.js'
+import { FleetRegistryStore, publicHostConfig } from './fleet-registry.js'
+import { FleetMonitor } from './fleet-monitor.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
 await sessionState.load()
+const fleetRegistry = new FleetRegistryStore()
+await fleetRegistry.load()
 const store = new GrokStore(undefined, sessionState)
 const liveMonitor = new LiveMonitor(store)
 const controller = new GrokController(sessionState)
@@ -37,6 +41,7 @@ const sessionReader = new SessionReader(store.grokHome)
 const usageLedger = new UsageLedger(sessionState)
 const usageBudgets = new UsageBudgetManager(sessionState, usageLedger)
 const runtimeInspector = new RuntimeInspector()
+const fleetMonitor = new FleetMonitor(fleetRegistry)
 const port = Number(process.env.PORT || 4310)
 const host = process.env.HOST || '127.0.0.1'
 const security = new SecurityGate(host)
@@ -80,6 +85,7 @@ controller.on('control', (payload) => {
 })
 workspaceInspector.on('change', (payload) => broadcast('workspace', payload))
 runtimeInspector.on('runtime', (payload) => broadcast('runtime', payload))
+fleetMonitor.on('fleet', (payload) => broadcast('fleet', payload))
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '64kb' }))
@@ -116,6 +122,98 @@ app.get('/api/runtime', async (request, response, next) => {
     response.json(runtimeInspector.snapshot())
   } catch (error) {
     next(error)
+  }
+})
+
+app.get('/api/fleet', (_request, response) => {
+  response.json(fleetMonitor.snapshot())
+})
+
+app.post('/api/fleet/hosts', async (request, response) => {
+  try {
+    const host = await fleetRegistry.create(request.body || {})
+    fleetMonitor.syncRegistry()
+    void fleetMonitor.refresh(host.id).catch(() => {
+      // The fleet snapshot exposes the bounded connection failure.
+    })
+    response.status(201).json({
+      host: publicHostConfig(host),
+      fleet: fleetMonitor.snapshot(),
+    })
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Invalid fleet host.' })
+  }
+})
+
+app.patch('/api/fleet/hosts/:id', async (request, response) => {
+  try {
+    const host = await fleetRegistry.update(request.params.id, request.body || {})
+    fleetMonitor.syncRegistry()
+    void fleetMonitor.refresh(host.id).catch(() => {
+      // The fleet snapshot exposes the bounded connection failure.
+    })
+    response.json({
+      host: publicHostConfig(host),
+      fleet: fleetMonitor.snapshot(),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid fleet host.'
+    response.status(message.includes('not found') ? 404 : 400).json({ error: message })
+  }
+})
+
+app.delete('/api/fleet/hosts/:id', async (request, response) => {
+  try {
+    if (!(await fleetRegistry.remove(request.params.id))) {
+      response.status(404).json({ error: 'Fleet host was not found.' })
+      return
+    }
+    fleetMonitor.syncRegistry()
+    response.status(204).end()
+  } catch (error) {
+    response.status(409).json({ error: error instanceof Error ? error.message : 'Fleet registry is unavailable.' })
+  }
+})
+
+app.post('/api/fleet/hosts/:id/refresh', async (request, response) => {
+  try {
+    response.json(await fleetMonitor.refresh(request.params.id))
+  } catch (error) {
+    response.status(404).json({ error: error instanceof Error ? error.message : 'Fleet host was not found.' })
+  }
+})
+
+app.get('/api/fleet/hosts/:id/sessions/:sessionId', async (request, response) => {
+  try {
+    response.json(await fleetMonitor.sessionDetail(request.params.id, request.params.sessionId))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Remote session is unavailable.'
+    response.status(message.includes('not found') ? 404 : 503).json({ error: message })
+  }
+})
+
+app.get('/api/fleet/hosts/:id/usage', async (request, response) => {
+  const period = typeof request.query.period === 'string' ? request.query.period : '30d'
+  const scope = typeof request.query.scope === 'string' ? request.query.scope : 'sessions'
+  const groupBy = typeof request.query.groupBy === 'string' ? request.query.groupBy : 'project'
+  if (
+    !USAGE_PERIODS.has(period as UsagePeriod)
+    || !USAGE_SCOPES.has(scope as UsageScope)
+    || !USAGE_GROUPS.has(groupBy as UsageGroupDimension)
+  ) {
+    response.status(400).json({ error: 'Invalid remote usage report options.' })
+    return
+  }
+  try {
+    response.json(await fleetMonitor.usage(
+      request.params.id,
+      period as UsagePeriod,
+      scope as UsageScope,
+      groupBy as UsageGroupDimension,
+    ))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Remote usage is unavailable.'
+    response.status(message.includes('not found') ? 404 : 503).json({ error: message })
   }
 })
 
@@ -507,6 +605,7 @@ app.get('/api/events', (request, response) => {
   response.write(`event: live\ndata: ${JSON.stringify(liveMonitor.snapshot())}\n\n`)
   response.write(`event: control\ndata: ${JSON.stringify(controller.snapshot())}\n\n`)
   response.write(`event: runtime\ndata: ${JSON.stringify(runtimeInspector.snapshot())}\n\n`)
+  response.write(`event: fleet\ndata: ${JSON.stringify(fleetMonitor.snapshot())}\n\n`)
   void store.dashboard().then((payload) => {
     response.write(`event: dashboard\ndata: ${JSON.stringify(payload)}\n\n`)
   })
@@ -546,6 +645,9 @@ await liveMonitor.start()
 runtimeInspector.update(liveMonitor.snapshot(), controller.snapshot())
 await runtimeInspector.start()
 await syncUsage()
+void fleetMonitor.start().catch((error) => {
+  console.error('Fleet monitor failed to start:', error)
+})
 
 export const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
   const listener = app.listen(port, host, () => resolve(listener))
@@ -568,6 +670,7 @@ async function shutdown() {
   await Promise.all([
     liveMonitor.stop(),
     runtimeInspector.stop(),
+    fleetMonitor.stop(),
     controller.stop(),
     workspaceInspector.close(),
   ])

@@ -18,6 +18,7 @@ import {
   GitCompareArrows,
   Layers3,
   Menu,
+  Network,
   Palette,
   RefreshCw,
   Radio,
@@ -38,15 +39,18 @@ import {
   getAuthStatus,
   getControlSnapshot,
   getDashboard,
+  getFleetSnapshot,
   getLiveSnapshot,
   getRuntimeSnapshot,
   getSetupStatus,
   login,
+  parseFleetSnapshot,
 } from './api'
 import type {
   ActivityDay,
   ControlSnapshot,
   DashboardPayload,
+  FleetSnapshot,
   LiveAgent,
   LiveFeedItem,
   LiveSnapshot,
@@ -64,6 +68,7 @@ import { SessionWorkbench } from './views/SessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
 import { UsageView } from './views/UsageView'
 import { RuntimeIntelligencePanels } from './views/RuntimeIntelligencePanels'
+import { FleetView } from './views/FleetView'
 import { PrivacyProvider, usePrivacy } from './privacy'
 import packageJson from '../package.json'
 
@@ -85,9 +90,10 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'sessions', index: '06', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
   { id: 'activity', index: '07', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
   { id: 'usage', index: '08', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: 'u' },
-  { id: 'library', index: '09', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
-  { id: 'memory', index: '10', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
-  { id: 'themes', index: '11', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
+  { id: 'fleet', index: '09', label: 'Fleet', eyebrow: 'Monitor', icon: Network, shortcut: 'f' },
+  { id: 'library', index: '10', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
+  { id: 'memory', index: '11', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
+  { id: 'themes', index: '12', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
 ]
 
 type ThemeId = 'operator' | 'event-horizon'
@@ -168,6 +174,7 @@ function App() {
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [live, setLive] = useState<LiveSnapshot | null>(null)
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
+  const [fleet, setFleet] = useState<FleetSnapshot | null>(null)
   const [control, setControl] = useState<ControlSnapshot | null>(null)
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [streamConnected, setStreamConnected] = useState(false)
@@ -175,6 +182,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [fleetError, setFleetError] = useState('')
   const [query, setQuery] = useState('')
   const [selectedSession, setSelectedSession] = useState<{ id: string; fallback: SessionRow | null } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -225,6 +233,14 @@ function App() {
         .catch(() => {
           // Dashboard and onboarding stay available if ACP is not ready yet.
         })
+      void getFleetSnapshot()
+        .then((next) => {
+          setFleet(next)
+          setFleetError('')
+        })
+        .catch((requestError) => {
+          setFleetError(requestError instanceof Error ? requestError.message : 'Unable to read the fleet registry.')
+        })
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to read Grok data')
     } finally {
@@ -264,6 +280,15 @@ function App() {
     events.addEventListener('workspace', (event) => {
       setStreamConnected(true)
       setWorkspaceChange(JSON.parse((event as MessageEvent).data) as WorkspaceChangeEvent)
+    })
+    events.addEventListener('fleet', (event) => {
+      setStreamConnected(true)
+      try {
+        setFleet(parseFleetSnapshot(JSON.parse((event as MessageEvent).data)))
+        setFleetError('')
+      } catch {
+        setFleetError('The fleet stream returned an invalid snapshot.')
+      }
     })
     events.onerror = () => setStreamConnected(false)
     return () => {
@@ -325,6 +350,16 @@ function App() {
 
   const refreshControl = useCallback(async () => {
     setControl(await getControlSnapshot())
+  }, [])
+
+  const refreshFleet = useCallback(async () => {
+    try {
+      const next = await getFleetSnapshot()
+      setFleet(next)
+      setFleetError('')
+    } catch (requestError) {
+      setFleetError(requestError instanceof Error ? requestError.message : 'Unable to read the fleet registry.')
+    }
   }, [])
 
   const openSession = useCallback((session: SessionRow | string) => {
@@ -424,6 +459,15 @@ function App() {
             )}
             {view === 'activity' && <ActivityView data={data} />}
             {view === 'usage' && <UsageView />}
+            {view === 'fleet' && (
+              <FleetView
+                fleet={fleet}
+                streamConnected={streamConnected}
+                error={fleetError}
+                onReload={refreshFleet}
+                onFleetChange={setFleet}
+              />
+            )}
             {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
             {view === 'memory' && <MemoryView data={data} />}
             {view === 'themes' && <ThemesView active={theme} onSelect={setTheme} />}
@@ -489,7 +533,7 @@ function ThemesView({
   return (
     <>
       <PageIntro
-        index="11"
+        index="12"
         eyebrow="Visual systems"
         title={<>Choose your<br /><em>command atmosphere.</em></>}
         description="Switch the entire dashboard aesthetic without changing your data, sessions, or workflow. Your selection stays active on this device."
@@ -1544,7 +1588,7 @@ function LibraryView({
   return (
     <>
       <PageIntro
-        index="09"
+        index="10"
         eyebrow="Capability library"
         title={<>What Grok can<br /><em>reach for.</em></>}
         description="The local skills, agent profiles, and marketplace packages shaping every run."
@@ -1583,7 +1627,7 @@ function MemoryView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="10"
+        index="11"
         eyebrow="Durable recall"
         title={<>Memory without<br /><em>the mystery.</em></>}
         description="A privacy-conscious inventory of Grok’s durable Markdown memory. Content stays on disk and is not rendered here."
@@ -1632,7 +1676,7 @@ function PageIntro({
 }) {
   return (
     <header className="page-intro">
-      <div className="intro-index">{index} / 11</div>
+      <div className="intro-index">{index} / 12</div>
       <div>
         <div className="kicker">{eyebrow}</div>
         <h1>{title}</h1>

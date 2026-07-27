@@ -13,7 +13,12 @@ smoke test that users receive.
 6. Run `npm run test:soak`.
 7. Run `npm run test:package`.
 8. Confirm `npm audit --omit=dev --audit-level=high` passes.
-9. Commit the release, create an annotated `vX.Y.Z` tag, and push the tag.
+9. Review the milestone completion matrix and confirm every requirement has
+   current unit, integration, browser, soak, package, privacy, and security
+   evidence.
+10. Obtain the user's explicit approval to merge, tag, or publish the release.
+11. After approval, commit the release, create an annotated `vX.Y.Z` tag, and
+    push the tag.
 
 The release workflow rebuilds and re-verifies the project, installs the packed
 tarball in an isolated directory, launches its real `grok-ui` executable, and
@@ -33,6 +38,14 @@ publishing. Configure the package once with this GitHub Actions publisher:
 The tagged workflow requires OIDC and does not use a long-lived npm token. It
 rejects a tag that does not match `package.json`, runs the full release gate,
 publishes to npm, and only then creates the GitHub release.
+
+For v0.10, the release gate must also prove that the installed host agent and
+central fleet monitor interoperate, that configured hosts can disconnect and
+recover during the 75-second soak, and that every remote surface remains
+read-only. A passing build or unit suite alone is not release evidence.
+
+Do not merge, tag, publish, or create a v0.10 release until the user explicitly
+approves those actions.
 
 To publish an existing GitHub tag that predates npm publication, open the
 Release workflow in GitHub Actions, choose **Run workflow**, and enter the
