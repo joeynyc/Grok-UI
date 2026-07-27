@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import {
   FLEET_PROTOCOL_VERSION,
@@ -48,8 +49,9 @@ interface HostState {
   consecutiveFailures: number
   hello: AgentHello | null
   snapshot: AgentSnapshot | null
+  contentSignature: string
   nextAttemptMs: number
-  inFlight: boolean
+  inFlight: Promise<void> | null
 }
 
 function iso(value: number): string {
@@ -88,6 +90,30 @@ function degradedSnapshot(snapshot: AgentSnapshot, latencyMs: number): string {
   return ''
 }
 
+function observedContentSignature(
+  hello: AgentHello | null,
+  snapshot: AgentSnapshot | null,
+): string {
+  const stableHello = hello ? { ...hello, generatedAt: '' } : null
+  const stableRuntime = snapshot?.runtime
+    ? { ...snapshot.runtime, generatedAt: '' }
+    : snapshot?.runtime
+  const stableUsage = snapshot?.usage
+    ? { ...snapshot.usage, generatedAt: '', from: '', to: '' }
+    : snapshot?.usage
+  const stableSnapshot = snapshot
+    ? {
+        ...snapshot,
+        generatedAt: '',
+        runtime: stableRuntime,
+        usage: stableUsage,
+      }
+    : null
+  return crypto.createHash('sha256')
+    .update(JSON.stringify({ hello: stableHello, snapshot: stableSnapshot }))
+    .digest('base64url')
+}
+
 function initialState(config: FleetHostConfig, now: number): HostState {
   return {
     config,
@@ -99,8 +125,9 @@ function initialState(config: FleetHostConfig, now: number): HostState {
     consecutiveFailures: 0,
     hello: null,
     snapshot: null,
+    contentSignature: '',
     nextAttemptMs: now,
-    inFlight: false,
+    inFlight: null,
   }
 }
 
@@ -189,17 +216,24 @@ export class FleetMonitor extends EventEmitter {
 
   syncRegistry(): void {
     const current = new Map(this.registry.list().map((host) => [host.id, host]))
+    let changed = false
     this.states.forEach((_state, id) => {
       if (current.has(id)) return
       this.states.delete(id)
       this.connector.closeHost?.(id)
+      changed = true
     })
     current.forEach((config, id) => {
       const previous = this.states.get(id)
       if (!previous) {
         this.states.set(id, initialState(config, this.now()))
+        changed = true
         return
       }
+      const registryChanged = previous.config.updatedAt !== config.updatedAt
+        || previous.config.enabled !== config.enabled
+        || previous.config.label !== config.label
+      changed ||= registryChanged
       const connectionChanged = previous.config.transport !== config.transport
         || previous.config.baseUrl !== config.baseUrl
         || previous.config.token !== config.token
@@ -226,7 +260,7 @@ export class FleetMonitor extends EventEmitter {
         previous.nextAttemptMs = this.now()
       }
     })
-    this.emitSnapshot(true)
+    if (changed) this.emitSnapshot(true)
   }
 
   snapshot(): FleetSnapshot {
@@ -277,7 +311,8 @@ export class FleetMonitor extends EventEmitter {
         workflows: hosts.reduce((sum, host) => sum + (host.snapshot?.workflows.length || 0), 0),
       },
     }
-    if (Buffer.byteLength(JSON.stringify(result)) <= MAX_FLEET_SNAPSHOT_BYTES) return result
+    let resultBytes = Buffer.byteLength(JSON.stringify(result))
+    if (resultBytes <= MAX_FLEET_SNAPSHOT_BYTES) return result
 
     const candidates = hosts
       .filter((host) => host.snapshot)
@@ -285,18 +320,22 @@ export class FleetMonitor extends EventEmitter {
         Buffer.byteLength(JSON.stringify(right.snapshot))
         - Buffer.byteLength(JSON.stringify(left.snapshot)))
     for (const host of candidates) {
+      const before = Buffer.byteLength(JSON.stringify(host))
       host.snapshot = compactAgentSnapshot(host.snapshot!, false)
       host.status = 'degraded'
       host.statusDetail = 'Remote data was compacted to keep the fleet response within its safety cap.'
-      if (Buffer.byteLength(JSON.stringify(result)) <= MAX_FLEET_SNAPSHOT_BYTES) break
+      resultBytes += Buffer.byteLength(JSON.stringify(host)) - before
+      if (resultBytes <= MAX_FLEET_SNAPSHOT_BYTES) break
     }
-    if (Buffer.byteLength(JSON.stringify(result)) > MAX_FLEET_SNAPSHOT_BYTES) {
+    if (resultBytes > MAX_FLEET_SNAPSHOT_BYTES) {
       for (const host of candidates) {
         if (!host.snapshot) continue
+        const before = Buffer.byteLength(JSON.stringify(host))
         host.snapshot = compactAgentSnapshot(host.snapshot, true)
         host.status = 'degraded'
         host.statusDetail = 'Remote data was compacted to keep the fleet response within its safety cap.'
-        if (Buffer.byteLength(JSON.stringify(result)) <= MAX_FLEET_SNAPSHOT_BYTES) break
+        resultBytes += Buffer.byteLength(JSON.stringify(host)) - before
+        if (resultBytes <= MAX_FLEET_SNAPSHOT_BYTES) break
       }
     }
     result.totals.healthy = hosts.filter((host) => host.status === 'healthy').length
@@ -375,8 +414,22 @@ export class FleetMonitor extends EventEmitter {
   }
 
   private async poll(state: HostState, force: boolean): Promise<void> {
-    if (state.inFlight || (!force && state.nextAttemptMs > this.now())) return
-    state.inFlight = true
+    if (state.inFlight) {
+      if (force) await state.inFlight
+      return
+    }
+    if (!force && state.nextAttemptMs > this.now()) return
+    const operation = this.pollHost(state)
+    state.inFlight = operation
+    try {
+      await operation
+    } finally {
+      if (state.inFlight === operation) state.inFlight = null
+      this.emitSnapshot()
+    }
+  }
+
+  private async pollHost(state: HostState): Promise<void> {
     state.lastAttemptMs = this.now()
     if (!state.lastSeenMs) {
       state.status = 'connecting'
@@ -386,6 +439,7 @@ export class FleetMonitor extends EventEmitter {
     try {
       const hello = normalizeAgentHello(await this.getJson(state.config, '/agent/v1/hello'))
       state.hello = hello
+      state.contentSignature = observedContentSignature(hello, state.snapshot)
       if (!protocolCompatible(hello)) {
         state.status = 'incompatible'
         state.statusDetail = `Agent protocol ${hello.protocolMin}-${hello.protocolMax} is incompatible with ${FLEET_PROTOCOL_VERSION}.`
@@ -408,6 +462,7 @@ export class FleetMonitor extends EventEmitter {
       const scoped = hostScopeSnapshot(state.config.id, snapshot)
       const degraded = degradedSnapshot(scoped, latency)
       state.snapshot = scoped
+      state.contentSignature = observedContentSignature(hello, scoped)
       state.latencyMs = latency
       state.lastSeenMs = receivedAt
       state.consecutiveFailures = 0
@@ -434,9 +489,6 @@ export class FleetMonitor extends EventEmitter {
         MAX_BACKOFF_MS,
       )
       state.nextAttemptMs = failedAt + backoff
-    } finally {
-      state.inFlight = false
-      this.emitSnapshot(true)
     }
   }
 
@@ -483,7 +535,7 @@ export class FleetMonitor extends EventEmitter {
     const signature = [
       this.registry.error,
       ...[...this.states.values()].map((state) =>
-        `${state.config.id}:${visibleStatus(state, now)}:${freshness(state, now)}`),
+        `${state.config.id}:${visibleStatus(state, now)}:${freshness(state, now)}:${state.contentSignature}`),
     ].join('|')
     if (!force && signature === this.lastVisibilitySignature) return
     this.lastVisibilitySignature = signature

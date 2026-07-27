@@ -143,6 +143,36 @@ function managed(session: SessionRow): ControlSession {
 }
 
 describe('UsageLedger', () => {
+  it('composes current observer inputs without becoming a second state writer', async () => {
+    const state = await stateStore()
+    const ledger = new UsageLedger(state)
+    const controlledRow = row('read-only-managed', '/tmp/read-only-project')
+    const controlled = managed(controlledRow)
+
+    const report = ledger.reportFromInputs({
+      sessions: [controlledRow],
+      live: [],
+      managed: [controlled],
+    }, {
+      period: 'all',
+      scope: 'all',
+      groupBy: 'session',
+      now: new Date('2026-07-26T10:00:00.000Z'),
+    })
+
+    expect(report.entries).toHaveLength(2)
+    expect(report.entries.find((entry) => entry.kind === 'managed-session')).toMatchObject({
+      sessionId: 'read-only-managed',
+      totalTokens: { value: 300, source: 'grok-reported' },
+    })
+    expect(report.entries.find((entry) => entry.kind === 'workflow-agent')).toMatchObject({
+      workflowId: 'workflow-1',
+      totalTokens: { value: 125, source: 'incomplete' },
+    })
+    expect(state.usageEntries()).toEqual([])
+    await expect(fs.stat(state.file)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('normalizes existing session and workflow telemetry without treating context occupancy as usage', async () => {
     const state = await stateStore()
     const ledger = new UsageLedger(state)

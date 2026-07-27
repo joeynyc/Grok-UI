@@ -136,6 +136,51 @@ function parseFleetMutation(value: unknown): FleetHostMutationResponse {
   }
 }
 
+export function parseFleetSessionDetail(value: unknown): AgentSessionDetail {
+  const detail = record(value)
+  const session = record(detail?.session)
+  const transcript = detail?.transcript
+  const workflows = detail?.workflows
+  if (
+    !detail
+    || typeof detail.protocolVersion !== 'number'
+    || typeof detail.generatedAt !== 'string'
+    || typeof detail.hostId !== 'string'
+    || !session
+    || typeof session.id !== 'string'
+    || !Array.isArray(transcript)
+    || transcript.length > 200
+    || !Array.isArray(workflows)
+    || workflows.length > 100
+    || 'permissions' in detail
+  ) {
+    throw new Error('Remote session returned an invalid bounded detail record')
+  }
+  const unsafeTranscript = transcript.some((value) => {
+    const item = record(value)
+    return !item
+      || typeof item.id !== 'string'
+      || (typeof item.text === 'string' && item.text.length > 40_000)
+  })
+  const unsafeWorkflow = workflows.some((value) => {
+    const workflow = record(value)
+    return !workflow
+      || typeof workflow.id !== 'string'
+      || workflow.controlHandle !== ''
+      || workflow.canPause === true
+      || workflow.canResume === true
+      || workflow.canStop === true
+      || !Array.isArray(workflow.phases)
+      || workflow.phases.length > 40
+      || !Array.isArray(workflow.agents)
+      || workflow.agents.length > 128
+  })
+  if (unsafeTranscript || unsafeWorkflow) {
+    throw new Error('Remote session detail exceeded its read-only protocol bounds')
+  }
+  return detail as unknown as AgentSessionDetail
+}
+
 export async function getDashboard(force = false): Promise<DashboardPayload> {
   const response = await fetch(`/api/dashboard${force ? '?refresh=1' : ''}`, {
     headers: { Accept: 'application/json' },
@@ -410,11 +455,11 @@ export async function refreshFleetHost(id: string): Promise<FleetSnapshot> {
 }
 
 export async function getFleetSessionDetail(hostId: string, sessionId: string): Promise<AgentSessionDetail> {
-  return json(
+  return parseFleetSessionDetail(await json<unknown>(
     await boundedFetch(
       `/api/fleet/hosts/${encodeURIComponent(hostId)}/sessions/${encodeURIComponent(sessionId)}`,
       { headers: { Accept: 'application/json' } },
     ),
     'Remote session request failed',
-  )
+  ))
 }

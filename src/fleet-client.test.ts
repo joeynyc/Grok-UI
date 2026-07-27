@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseFleetSnapshot } from './api'
+import { parseFleetSessionDetail, parseFleetSnapshot } from './api'
 
 function host(overrides: Record<string, unknown> = {}) {
   return {
@@ -85,5 +85,36 @@ describe('fleet client boundary', () => {
         usage: null,
       },
     })]))).toThrow(/collection caps/i)
+  })
+
+  it('accepts bounded read-only session detail and rejects controls or oversized transcripts', () => {
+    const detail = {
+      protocolVersion: 1,
+      generatedAt: new Date().toISOString(),
+      hostId: 'host-1',
+      session: { id: 'host-1:session-1' },
+      transcript: [{ id: 'event-1', text: 'Observed output' }],
+      live: null,
+      control: null,
+      workflows: [{
+        id: 'host-1:workflow-1',
+        controlHandle: '',
+        canPause: false,
+        canResume: false,
+        canStop: false,
+        phases: [],
+        agents: [],
+      }],
+      managed: false,
+    }
+    expect(parseFleetSessionDetail(detail).session.id).toBe('host-1:session-1')
+    expect(() => parseFleetSessionDetail({
+      ...detail,
+      workflows: [{ ...detail.workflows[0], canStop: true }],
+    })).toThrow(/read-only protocol bounds/i)
+    expect(() => parseFleetSessionDetail({
+      ...detail,
+      transcript: Array.from({ length: 201 }, (_, index) => ({ id: String(index), text: '' })),
+    })).toThrow(/invalid bounded detail/i)
   })
 })

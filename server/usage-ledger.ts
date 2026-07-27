@@ -15,8 +15,9 @@ import type {
   UsageSource,
 } from './types.js'
 import { SessionStateStore } from './session-state.js'
+import { controlSessionRow, liveAgentRow } from './session-projection.js'
 
-interface UsageInputs {
+export interface UsageInputs {
   sessions: SessionRow[]
   live: LiveAgent[]
   managed: ControlSession[]
@@ -35,6 +36,10 @@ const PERIODS: Record<Exclude<UsagePeriod, 'all'>, number> = {
   '30d': 30 * 24 * 60 * 60_000,
   '90d': 90 * 24 * 60 * 60_000,
 }
+
+export const USAGE_PERIODS = new Set<UsagePeriod>(['24h', '7d', '30d', '90d', 'all'])
+export const USAGE_SCOPES = new Set<UsageScope>(['sessions', 'workflow-agents', 'all'])
+export const USAGE_GROUPS = new Set<UsageGroupDimension>(['project', 'model', 'session', 'agent'])
 
 function unavailable(): UsageMetric {
   return { value: null, source: 'unavailable' }
@@ -111,35 +116,6 @@ function sessionEntry(
       ...observed(live?.costAmount || 0, live?.costTelemetryAvailable === true),
       currency: (live?.costCurrency || '').toUpperCase(),
     },
-  }
-}
-
-function syntheticRow(session: ControlSession): SessionRow {
-  return {
-    id: session.id,
-    title: session.title,
-    summary: '',
-    cwd: session.cwd,
-    workspace: projectName(session.cwd),
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    model: session.model,
-    agent: 'Grok UI',
-    reasoningEffort: '',
-    sandboxProfile: '',
-    messages: 0,
-    chatMessages: 0,
-    turns: 0,
-    toolCalls: 0,
-    errors: 0,
-    filesTouched: 0,
-    linesAdded: 0,
-    linesRemoved: 0,
-    durationSeconds: 0,
-    contextUsage: 0,
-    status: 'recent',
-    diskBytes: 0,
-    archived: false,
   }
 }
 
@@ -224,103 +200,104 @@ function summarize(key: string, label: string, entries: UsageLedgerEntry[]): Usa
   }
 }
 
+function usageEntries(inputs: UsageInputs): UsageLedgerEntry[] {
+  const managedById = new Map(inputs.managed.map((session) => [session.id, session]))
+  const liveById = new Map(inputs.live.map((session) => [session.id, session]))
+  const sessionsById = new Map(inputs.sessions.map((session) => [session.id, session]))
+  inputs.managed.forEach((session) => {
+    if (!sessionsById.has(session.id)) sessionsById.set(session.id, controlSessionRow(session))
+  })
+  inputs.live.forEach((session) => {
+    if (!sessionsById.has(session.id)) sessionsById.set(session.id, liveAgentRow(session))
+  })
+
+  const entries = [...sessionsById.values()].map((session) =>
+    sessionEntry(session, liveById.get(session.id), managedById.get(session.id)))
+  entries.push(...inputs.managed.flatMap(workflowEntries))
+  return entries
+}
+
+function mergeEntries(
+  persisted: UsageLedgerEntry[],
+  observedEntries: UsageLedgerEntry[],
+): UsageLedgerEntry[] {
+  const entries = new Map(persisted.map((entry) => [entry.id, entry]))
+  observedEntries.forEach((entry) => entries.set(entry.id, entry))
+  return [...entries.values()]
+}
+
+function reportForEntries(
+  sourceEntries: UsageLedgerEntry[],
+  options: UsageReportOptions = {},
+): UsageReport {
+  const period = options.period || '30d'
+  const scope = options.scope || 'sessions'
+  const groupBy = options.groupBy || 'project'
+  const now = options.now || new Date()
+  const to = now.toISOString()
+  const from = period === 'all'
+    ? new Date(0).toISOString()
+    : new Date(now.getTime() - PERIODS[period]).toISOString()
+  const entries = sourceEntries
+    .filter((entry) => entry.updatedAt >= from && entry.updatedAt <= to)
+    .filter((entry) => scope === 'all'
+      || (scope === 'workflow-agents') === (entry.kind === 'workflow-agent'))
+
+  const grouped = new Map<string, { label: string; entries: UsageLedgerEntry[] }>()
+  entries.forEach((entry) => {
+    const value = groupValue(entry, groupBy)
+    const current = grouped.get(value.key) || { label: value.label, entries: [] }
+    current.entries.push(entry)
+    grouped.set(value.key, current)
+  })
+  const groups = [...grouped.entries()]
+    .map(([key, value]) => summarize(key, value.label, value.entries))
+    .sort((left, right) =>
+      (right.totalTokens.value || 0) - (left.totalTokens.value || 0)
+      || right.updatedAt.localeCompare(left.updatedAt)
+      || left.label.localeCompare(right.label))
+  const coverage: Record<UsageSource, number> = {
+    'grok-reported': 0,
+    derived: 0,
+    incomplete: 0,
+    unavailable: 0,
+  }
+  entries.forEach((entry) => {
+    coverage[entry.totalTokens.source] += 1
+  })
+
+  return {
+    generatedAt: new Date().toISOString(),
+    period,
+    scope,
+    from,
+    to,
+    groupBy,
+    entries,
+    totals: summarize('all', 'All usage', entries),
+    groups,
+    coverage,
+  }
+}
+
 export class UsageLedger {
   constructor(private readonly state: SessionStateStore) {}
 
   async sync(inputs: UsageInputs): Promise<void> {
-    const managedById = new Map(inputs.managed.map((session) => [session.id, session]))
-    const liveById = new Map(inputs.live.map((session) => [session.id, session]))
-    const sessionsById = new Map(inputs.sessions.map((session) => [session.id, session]))
-    inputs.managed.forEach((session) => {
-      if (!sessionsById.has(session.id)) sessionsById.set(session.id, syntheticRow(session))
-    })
-    inputs.live.forEach((session) => {
-      if (!sessionsById.has(session.id)) {
-        sessionsById.set(session.id, {
-          ...syntheticRow({
-            id: session.id,
-            cwd: session.cwd,
-            title: session.title,
-            model: session.model,
-            state: 'idle',
-            createdAt: session.openedAt,
-            updatedAt: session.updatedAt,
-            lastPrompt: '',
-            stopReason: '',
-            error: '',
-            cancellationStatus: 'none',
-            cancelRequestedAt: '',
-            cancelledAt: '',
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-            tokenTelemetryAvailable: false,
-            costAmount: 0,
-            costCurrency: '',
-            costTelemetryAvailable: false,
-            feed: [],
-            workflows: [],
-          }),
-          agent: 'Grok CLI',
-          status: 'live',
-        })
-      }
-    })
-
-    const entries = [...sessionsById.values()].map((session) =>
-      sessionEntry(session, liveById.get(session.id), managedById.get(session.id)))
-    entries.push(...inputs.managed.flatMap(workflowEntries))
-    await this.state.mergeUsageEntries(entries)
+    await this.state.mergeUsageEntries(usageEntries(inputs))
   }
 
   report(options: UsageReportOptions = {}): UsageReport {
-    const period = options.period || '30d'
-    const scope = options.scope || 'sessions'
-    const groupBy = options.groupBy || 'project'
-    const now = options.now || new Date()
-    const to = now.toISOString()
-    const from = period === 'all'
-      ? new Date(0).toISOString()
-      : new Date(now.getTime() - PERIODS[period]).toISOString()
-    const entries = this.state.usageEntries()
-      .filter((entry) => entry.updatedAt >= from && entry.updatedAt <= to)
-      .filter((entry) => scope === 'all'
-        || (scope === 'workflow-agents') === (entry.kind === 'workflow-agent'))
+    return reportForEntries(this.state.usageEntries(), options)
+  }
 
-    const grouped = new Map<string, { label: string; entries: UsageLedgerEntry[] }>()
-    entries.forEach((entry) => {
-      const value = groupValue(entry, groupBy)
-      const current = grouped.get(value.key) || { label: value.label, entries: [] }
-      current.entries.push(entry)
-      grouped.set(value.key, current)
-    })
-    const groups = [...grouped.entries()]
-      .map(([key, value]) => summarize(key, value.label, value.entries))
-      .sort((left, right) =>
-        (right.totalTokens.value || 0) - (left.totalTokens.value || 0)
-        || right.updatedAt.localeCompare(left.updatedAt)
-        || left.label.localeCompare(right.label))
-    const coverage: Record<UsageSource, number> = {
-      'grok-reported': 0,
-      derived: 0,
-      incomplete: 0,
-      unavailable: 0,
-    }
-    entries.forEach((entry) => {
-      coverage[entry.totalTokens.source] += 1
-    })
-
-    return {
-      generatedAt: new Date().toISOString(),
-      period,
-      scope,
-      from,
-      to,
-      groupBy,
-      entries,
-      totals: summarize('all', 'All usage', entries),
-      groups,
-      coverage,
-    }
+  reportFromInputs(
+    inputs: UsageInputs,
+    options: UsageReportOptions = {},
+  ): UsageReport {
+    return reportForEntries(
+      mergeEntries(this.state.usageEntries(), usageEntries(inputs)),
+      options,
+    )
   }
 }

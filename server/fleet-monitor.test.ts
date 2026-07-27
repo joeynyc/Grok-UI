@@ -47,10 +47,10 @@ function hello(protocolMin = 1, protocolMax = 1) {
   }
 }
 
-function snapshot(degraded = false, large = false) {
+function snapshot(degraded = false, large = false, revision = 0) {
   const sessions = Array.from({ length: large ? 200 : 1 }, (_, index) => ({
     id: `session-${index + 1}`,
-    title: `Remote session ${index + 1}`,
+    title: `Remote session ${index + 1}${revision ? ` revision ${revision}` : ''}`,
     summary: large ? 'x'.repeat(4_000) : '',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -96,6 +96,9 @@ class MockConnector implements FleetConnector {
   modes = new Map<string, Mode>()
   active = 0
   maximumActive = 0
+  blockedHost = ''
+  blocker: Promise<void> | null = null
+  snapshotRevision = 0
 
   constructor(private readonly advance?: (milliseconds: number) => void) {}
 
@@ -103,6 +106,7 @@ class MockConnector implements FleetConnector {
     this.active += 1
     this.maximumActive = Math.max(this.maximumActive, this.active)
     try {
+      if (host.id === this.blockedHost && this.blocker) await this.blocker
       await new Promise((resolve) => setTimeout(resolve, 2))
       const mode = this.modes.get(host.id) || 'healthy'
       if (mode === 'offline') throw new FleetConnectionError('offline', 'Disconnected.')
@@ -110,7 +114,9 @@ class MockConnector implements FleetConnector {
       if (mode === 'malformed') throw new Error('malformed')
       if (mode === 'slow') this.advance?.(1_000)
       if (fixedPath.endsWith('/hello')) return mode === 'incompatible' ? hello(2, 3) : hello()
-      if (fixedPath.endsWith('/snapshot')) return snapshot(mode === 'degraded', mode === 'large')
+      if (fixedPath.endsWith('/snapshot')) {
+        return snapshot(mode === 'degraded', mode === 'large', this.snapshotRevision)
+      }
       if (fixedPath.startsWith('/agent/v1/usage')) return usage()
       throw new Error(`Unexpected path ${fixedPath}`)
     } finally {
@@ -231,6 +237,72 @@ describe('FleetMonitor', () => {
       connector.maximumActive = 0
       await Promise.all(hosts.map((host) => monitor.refresh(host.id)))
       expect(connector.maximumActive).toBeLessThanOrEqual(FLEET_MAX_CONCURRENCY)
+    } finally {
+      await monitor.stop()
+    }
+  })
+
+  it('coalesces an explicit refresh with an in-flight host poll', async () => {
+    const { registry, hosts } = await setup()
+    const connector = new MockConnector()
+    const monitor = new FleetMonitor(registry, connector)
+    await monitor.start()
+    try {
+      let release = () => {}
+      connector.blockedHost = hosts[0].id
+      connector.blocker = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const background = monitor.refresh(hosts[0].id)
+      while (!connector.active) await new Promise((resolve) => setTimeout(resolve, 1))
+
+      let explicitCompleted = false
+      const explicit = monitor.refresh(hosts[0].id).then(() => {
+        explicitCompleted = true
+      })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(explicitCompleted).toBe(false)
+
+      release()
+      await Promise.all([background, explicit])
+      expect(explicitCompleted).toBe(true)
+    } finally {
+      await monitor.stop()
+    }
+  })
+
+  it('does not emit unchanged full-fleet SSE snapshots after each poll', async () => {
+    const { registry } = await setup()
+    const connector = new MockConnector()
+    const monitor = new FleetMonitor(registry, connector, () => Date.now(), 10)
+    await monitor.start()
+    try {
+      let events = 0
+      monitor.on('fleet', () => {
+        events += 1
+      })
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      expect(events).toBe(0)
+    } finally {
+      await monitor.stop()
+    }
+  })
+
+  it('emits when observed host content changes without a status transition', async () => {
+    const { registry, hosts } = await setup()
+    const connector = new MockConnector()
+    const monitor = new FleetMonitor(registry, connector)
+    await monitor.start()
+    try {
+      let events = 0
+      monitor.on('fleet', () => {
+        events += 1
+      })
+      connector.snapshotRevision = 2
+      await monitor.refresh(hosts[0].id)
+      expect(events).toBe(1)
+      expect(monitor.snapshot().hosts[0].snapshot?.sessions[0].title)
+        .toBe('Remote session 1 revision 2')
     } finally {
       await monitor.stop()
     }

@@ -88,6 +88,72 @@ describe('FleetRegistryStore', () => {
       '--',
       'builder@workstation',
     ])
+    await expect(store.create({
+      label: 'Conflicting SSH workstation',
+      transport: 'ssh',
+      token: 'secret',
+      sshTarget: 'builder@another-workstation',
+      localPort: 14311,
+      remotePort: 4311,
+    })).rejects.toThrow('unique local tunnel ports')
+  })
+
+  it('recovers from a transient write failure without committing memory early', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-fleet-recovery-'))
+    cleanup.push(root)
+    const directory = path.join(root, 'state')
+    const store = new FleetRegistryStore(directory)
+    await store.load()
+    await fs.writeFile(directory, 'temporarily blocks state directory creation')
+
+    await expect(store.create({
+      label: 'First attempt',
+      transport: 'direct',
+      baseUrl: 'http://127.0.0.1:4311',
+      token: 'secret',
+    })).rejects.toThrow()
+    expect(store.list()).toEqual([])
+
+    await fs.rm(directory)
+    const recovered = await store.create({
+      label: 'Recovered observer',
+      transport: 'direct',
+      baseUrl: 'http://127.0.0.1:4311',
+      token: 'secret',
+    })
+    expect(store.list().map((host) => host.id)).toEqual([recovered.id])
+
+    const restored = new FleetRegistryStore(directory)
+    await restored.load()
+    expect(restored.get(recovered.id)?.label).toBe('Recovered observer')
+  })
+
+  it('preserves a persisted registry with conflicting enabled SSH ports', async () => {
+    const store = await registry()
+    await store.create({
+      label: 'First SSH host',
+      transport: 'ssh',
+      token: 'secret',
+      sshTarget: 'builder@first-host',
+      localPort: 14311,
+      remotePort: 4311,
+    })
+    const persisted = JSON.parse(await fs.readFile(store.file, 'utf8')) as {
+      hosts: Array<Record<string, unknown>>
+    }
+    persisted.hosts.push({
+      ...persisted.hosts[0],
+      id: 'second-ssh-host',
+      label: 'Second SSH host',
+      sshTarget: 'builder@second-host',
+    })
+    await fs.writeFile(store.file, JSON.stringify(persisted, null, 2), { mode: 0o600 })
+
+    const restored = new FleetRegistryStore(store.directory)
+    await restored.load()
+    expect(restored.list()).toEqual([])
+    expect(restored.error).toContain('preserved')
+    expect(await fs.readFile(store.file, 'utf8')).toContain('second-ssh-host')
   })
 
   it('preserves a malformed or future registry and keeps the central UI loadable', async () => {

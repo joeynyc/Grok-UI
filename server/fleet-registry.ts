@@ -180,12 +180,30 @@ export function publicHostConfig(host: FleetHostConfig): FleetHostPublicConfig {
   return { ...safe, hasToken: Boolean(host.token) }
 }
 
+function sortedHosts(hosts: Map<string, FleetHostConfig>): FleetHostConfig[] {
+  return [...hosts.values()]
+    .map((host) => ({ ...host }))
+    .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id))
+}
+
+function assertUniqueSshPorts(hosts: Map<string, FleetHostConfig>): void {
+  const ports = new Set<number>()
+  hosts.forEach((host) => {
+    if (!host.enabled || host.transport !== 'ssh') return
+    if (ports.has(host.localPort)) {
+      throw new Error(`Enabled SSH hosts must use unique local tunnel ports; ${host.localPort} is already registered.`)
+    }
+    ports.add(host.localPort)
+  })
+}
+
 export class FleetRegistryStore {
   readonly directory: string
   readonly file: string
   private hosts = new Map<string, FleetHostConfig>()
   private loaded = false
   private writeQueue: Promise<void> = Promise.resolve()
+  private lastWriteError: unknown = null
   private loadError = ''
 
   constructor(directory = process.env.GROK_UI_STATE_DIR || path.join(os.homedir(), '.grok-ui')) {
@@ -203,7 +221,9 @@ export class FleetRegistryStore {
         : []
       if (normalized.some((host) => host === null)) throw new Error('Fleet registry contains an invalid host.')
       const hosts = normalized.filter((host): host is FleetHostConfig => host !== null)
-      this.hosts = new Map(hosts.slice(0, MAX_FLEET_HOSTS).map((host) => [host.id, host]))
+      const candidate = new Map(hosts.slice(0, MAX_FLEET_HOSTS).map((host) => [host.id, host]))
+      assertUniqueSshPorts(candidate)
+      this.hosts = candidate
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       this.hosts = new Map()
@@ -219,9 +239,7 @@ export class FleetRegistryStore {
   }
 
   list(): FleetHostConfig[] {
-    return [...this.hosts.values()]
-      .map((host) => ({ ...host }))
-      .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id))
+    return sortedHosts(this.hosts)
   }
 
   get(id: string): FleetHostConfig | null {
@@ -230,49 +248,75 @@ export class FleetRegistryStore {
   }
 
   async create(input: FleetHostInput): Promise<FleetHostConfig> {
-    this.assertWritable()
-    if (this.hosts.size >= MAX_FLEET_HOSTS) throw new Error(`Fleet registry is limited to ${MAX_FLEET_HOSTS} hosts.`)
-    const host = normalizedHost(input)
-    this.hosts.set(host.id, host)
-    await this.persist()
-    return { ...host }
+    return this.mutate((hosts) => {
+      if (hosts.size >= MAX_FLEET_HOSTS) {
+        throw new Error(`Fleet registry is limited to ${MAX_FLEET_HOSTS} hosts.`)
+      }
+      const host = normalizedHost(input)
+      hosts.set(host.id, host)
+      return { ...host }
+    })
   }
 
   async update(id: string, input: FleetHostInput): Promise<FleetHostConfig> {
-    this.assertWritable()
-    const existing = this.hosts.get(id)
-    if (!existing) throw new Error('Fleet host was not found.')
-    const host = normalizedHost(input, existing)
-    this.hosts.set(id, host)
-    await this.persist()
-    return { ...host }
+    return this.mutate((hosts) => {
+      const existing = hosts.get(id)
+      if (!existing) throw new Error('Fleet host was not found.')
+      const host = normalizedHost(input, existing)
+      hosts.set(id, host)
+      return { ...host }
+    })
   }
 
   async remove(id: string): Promise<boolean> {
-    this.assertWritable()
-    if (!this.hosts.delete(id)) return false
-    await this.persist()
-    return true
+    return this.mutate((hosts) => hosts.delete(id))
   }
 
   async flush(): Promise<void> {
     await this.writeQueue
+    if (this.lastWriteError) throw this.lastWriteError
   }
 
-  private async persist(): Promise<void> {
+  private async mutate<T>(
+    change: (hosts: Map<string, FleetHostConfig>) => T,
+  ): Promise<T> {
+    const operation = this.writeQueue.then(async () => {
+      this.assertWritable()
+      const next = new Map(this.hosts)
+      const result = change(next)
+      assertUniqueSshPorts(next)
+      await this.persist(next)
+      this.hosts = next
+      return result
+    })
+    this.writeQueue = operation.then(
+      () => {
+        this.lastWriteError = null
+      },
+      (error) => {
+        this.lastWriteError = error
+      },
+    )
+    return operation
+  }
+
+  private async persist(hosts: Map<string, FleetHostConfig>): Promise<void> {
     const state: PersistedFleetRegistry = {
       version: REGISTRY_VERSION,
-      hosts: this.list(),
+      hosts: sortedHosts(hosts),
     }
     const snapshot = JSON.stringify(state, null, 2)
-    this.writeQueue = this.writeQueue.then(async () => {
-      await fs.mkdir(this.directory, { recursive: true, mode: 0o700 })
-      await fs.chmod(this.directory, 0o700)
-      const temporary = path.join(this.directory, `.fleet.${process.pid}.${Date.now()}.tmp`)
+    await fs.mkdir(this.directory, { recursive: true, mode: 0o700 })
+    await fs.chmod(this.directory, 0o700)
+    const temporary = path.join(this.directory, `.fleet.${process.pid}.${Date.now()}.tmp`)
+    let renamed = false
+    try {
       await fs.writeFile(temporary, snapshot, { encoding: 'utf8', mode: 0o600 })
       await fs.rename(temporary, this.file)
-    })
-    await this.writeQueue
+      renamed = true
+    } finally {
+      if (!renamed) await fs.rm(temporary, { force: true }).catch(() => {})
+    }
   }
 
   private assertWritable(): void {

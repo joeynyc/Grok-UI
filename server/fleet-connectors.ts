@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import net from 'node:net'
 import type { FleetHostConfig } from './types.js'
 import { MAX_AGENT_BODY_BYTES } from './fleet-protocol.js'
 
@@ -30,6 +31,37 @@ interface Tunnel {
   signature: string
   child: ChildProcessWithoutNullStreams
   error: string
+}
+
+function loopbackConnects(port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port })
+    let settled = false
+    const finish = (connected: boolean) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(connected)
+    }
+    socket.setTimeout(Math.max(1, timeoutMs), () => finish(false))
+    socket.once('connect', () => finish(true))
+    socket.once('error', () => finish(false))
+  })
+}
+
+export async function waitForLoopbackPort(
+  port: number,
+  timeoutMs: number,
+  isAlive: () => boolean = () => true,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline && isAlive()) {
+    if (await loopbackConnects(port, Math.min(150, Math.max(1, deadline - Date.now())))) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, deadline - Date.now()))))
+  }
+  return false
 }
 
 export function sshTunnelArgs(host: FleetHostConfig, timeoutMs: number): string[] {
@@ -91,11 +123,20 @@ async function requestJson(
   pathName: string,
   timeoutMs: number,
 ): Promise<unknown> {
+  let safePath: string
+  try {
+    safePath = fixedAgentPath(pathName)
+  } catch {
+    throw new FleetConnectionError(
+      'malformed',
+      'Fleet connector rejected a path outside the fixed agent protocol.',
+    )
+  }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   timer.unref()
   try {
-    const response = await fetch(new URL(fixedAgentPath(pathName), baseUrl), {
+    const response = await fetch(new URL(safePath, baseUrl), {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -136,11 +177,13 @@ export class DefaultFleetConnector implements FleetConnector {
     fixedPath: string,
     timeoutMs = FLEET_REQUEST_TIMEOUT_MS,
   ): Promise<unknown> {
+    const startedAt = Date.now()
     if (host.transport === 'ssh') await this.ensureSshTunnel(host, timeoutMs)
     const baseUrl = host.transport === 'ssh'
       ? `http://127.0.0.1:${host.localPort}`
       : host.baseUrl
-    return requestJson(baseUrl, host.token, fixedPath, timeoutMs)
+    const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt))
+    return requestJson(baseUrl, host.token, fixedPath, remainingMs)
   }
 
   closeHost(hostId: string): void {
@@ -164,6 +207,12 @@ export class DefaultFleetConnector implements FleetConnector {
     const current = this.tunnels.get(host.id)
     if (current && current.signature === signature && current.child.exitCode === null) return
     if (current) this.closeHost(host.id)
+    if (await loopbackConnects(host.localPort, Math.min(150, timeoutMs))) {
+      throw new FleetConnectionError(
+        'unavailable',
+        `Local SSH tunnel port ${host.localPort} is already in use.`,
+      )
+    }
 
     const child = spawn('ssh', sshTunnelArgs(host, timeoutMs), {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -188,5 +237,17 @@ export class DefaultFleetConnector implements FleetConnector {
         'The local SSH client is unavailable.',
       )))
     })
+    const ready = await waitForLoopbackPort(
+      host.localPort,
+      Math.max(1, timeoutMs - 150),
+      () => child.exitCode === null && child.signalCode === null,
+    )
+    if (!ready) {
+      this.closeHost(host.id)
+      throw new FleetConnectionError(
+        'offline',
+        'The SSH tunnel did not become ready before the timeout.',
+      )
+    }
   }
 }

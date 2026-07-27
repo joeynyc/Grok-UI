@@ -9,8 +9,6 @@ import { WorkspaceInspector } from './workspace-inspector.js'
 import { SessionStateStore } from './session-state.js'
 import { mergeSessionFeed, SessionReader } from './session-reader.js'
 import type {
-  ControlSession,
-  LiveAgent,
   SessionRow,
   UsageGroupDimension,
   UsageBudgetDimension,
@@ -20,12 +18,18 @@ import type {
 } from './types.js'
 import { APP_VERSION } from './app-version.js'
 import { inspectSetup } from './setup-diagnostics.js'
-import { UsageLedger } from './usage-ledger.js'
+import {
+  UsageLedger,
+  USAGE_GROUPS,
+  USAGE_PERIODS,
+  USAGE_SCOPES,
+} from './usage-ledger.js'
 import { RuntimeInspector } from './runtime-inspector.js'
 import { UsageBudgetManager } from './usage-budgets.js'
 import { usageExport, type UsageExportFormat } from './usage-export.js'
 import { FleetRegistryStore, publicHostConfig } from './fleet-registry.js'
 import { FleetMonitor } from './fleet-monitor.js'
+import { controlSessionRow, liveAgentRow } from './session-projection.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
@@ -217,10 +221,6 @@ app.get('/api/fleet/hosts/:id/usage', async (request, response) => {
   }
 })
 
-const USAGE_PERIODS = new Set<UsagePeriod>(['24h', '7d', '30d', '90d', 'all'])
-const USAGE_SCOPES = new Set<UsageScope>(['sessions', 'workflow-agents', 'all'])
-const USAGE_GROUPS = new Set<UsageGroupDimension>(['project', 'model', 'session', 'agent'])
-
 app.get('/api/usage', async (request, response, next) => {
   try {
     const period = typeof request.query.period === 'string' ? request.query.period : '30d'
@@ -408,75 +408,13 @@ app.post('/api/control/permissions/:id', (request, response) => {
   response.json({ resolved: true })
 })
 
-function controlRow(session: ControlSession): SessionRow {
-  return {
-    id: session.id,
-    title: session.title,
-    summary: '',
-    cwd: session.cwd,
-    workspace: path.basename(session.cwd) || session.cwd,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    model: session.model || 'Grok default',
-    agent: 'Grok UI',
-    reasoningEffort: 'default',
-    sandboxProfile: 'native permissions',
-    messages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    chatMessages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    turns: session.feed.filter((item) => item.type === 'user').length,
-    toolCalls: session.feed.filter((item) => item.type === 'tool').length,
-    errors: session.state === 'failed' ? 1 : 0,
-    filesTouched: 0,
-    linesAdded: 0,
-    linesRemoved: 0,
-    durationSeconds: Math.max(0, (Date.now() - new Date(session.createdAt).getTime()) / 1_000),
-    contextUsage: 0,
-    status: session.state === 'attention'
-      ? 'attention'
-      : session.state === 'working' || session.state === 'starting' ? 'live' : 'recent',
-    diskBytes: 0,
-    archived: false,
-  }
-}
-
-function liveRow(session: LiveAgent): SessionRow {
-  return {
-    id: session.id,
-    title: session.title,
-    summary: '',
-    cwd: session.cwd,
-    workspace: session.workspace,
-    createdAt: session.openedAt,
-    updatedAt: session.updatedAt,
-    model: session.model,
-    agent: 'Grok CLI',
-    reasoningEffort: 'default',
-    sandboxProfile: 'CLI process',
-    messages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    chatMessages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    turns: session.turns,
-    toolCalls: session.toolCalls,
-    errors: 0,
-    filesTouched: 0,
-    linesAdded: 0,
-    linesRemoved: 0,
-    durationSeconds: Math.max(0, (Date.now() - new Date(session.openedAt).getTime()) / 1_000),
-    contextUsage: session.contextUsage,
-    status: session.state === 'attention'
-      ? 'attention'
-      : session.state === 'working' || session.state === 'waiting' ? 'live' : 'recent',
-    diskBytes: 0,
-    archived: false,
-  }
-}
-
 async function resolveSession(sessionId: string): Promise<SessionRow | null> {
   const recorded = await store.session(sessionId)
   if (recorded) return recorded
   const controlled = controller.snapshot().sessions.find((session) => session.id === sessionId)
-  if (controlled) return sessionState.apply(controlRow(controlled))
+  if (controlled) return sessionState.apply(controlSessionRow(controlled))
   const live = liveMonitor.snapshot().agents.find((session) => session.id === sessionId)
-  return live ? sessionState.apply(liveRow(live)) : null
+  return live ? sessionState.apply(liveAgentRow(live)) : null
 }
 
 async function workspaceAllowed(cwd: string): Promise<boolean> {

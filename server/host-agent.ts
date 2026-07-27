@@ -32,15 +32,19 @@ import type {
   AgentHostIdentity,
   AgentSessionDetail,
   AgentSnapshot,
-  ControlSession,
   ControlSnapshot,
-  SessionRow,
   UsageGroupDimension,
   UsagePeriod,
   UsageReport,
   UsageScope,
 } from './types.js'
-import { UsageLedger } from './usage-ledger.js'
+import {
+  UsageLedger,
+  USAGE_GROUPS,
+  USAGE_PERIODS,
+  USAGE_SCOPES,
+} from './usage-ledger.js'
+import { controlSessionRow, liveAgentRow } from './session-projection.js'
 
 const CAPABILITIES: AgentCapability[] = [
   'sessions.list',
@@ -49,9 +53,6 @@ const CAPABILITIES: AgentCapability[] = [
   'runtime.snapshot',
   'usage.report',
 ]
-const USAGE_PERIODS = new Set<UsagePeriod>(['24h', '7d', '30d', '90d', 'all'])
-const USAGE_SCOPES = new Set<UsageScope>(['sessions', 'workflow-agents', 'all'])
-const USAGE_GROUPS = new Set<UsageGroupDimension>(['project', 'model', 'session', 'agent'])
 const SESSION_ID = /^[a-zA-Z0-9._:-]{1,160}$/
 
 function emptyControl(): ControlSnapshot {
@@ -76,30 +77,6 @@ function equalSecret(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left)
   const rightBuffer = Buffer.from(right)
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer)
-}
-
-function syntheticManagedSession(session: ControlSession): SessionRow {
-  return normalizeSession({
-    id: session.id,
-    title: session.title,
-    summary: '',
-    cwd: session.cwd,
-    workspace: path.basename(session.cwd) || session.cwd,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    model: session.model || 'Grok default',
-    agent: 'Grok UI',
-    reasoningEffort: 'default',
-    sandboxProfile: 'managed',
-    messages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    chatMessages: session.feed.filter((item) => item.type === 'user' || item.type === 'assistant').length,
-    turns: session.feed.filter((item) => item.type === 'user').length,
-    toolCalls: session.feed.filter((item) => item.type === 'tool').length,
-    errors: session.state === 'failed' ? 1 : 0,
-    status: ['starting', 'working'].includes(session.state)
-      ? 'live'
-      : session.state === 'attention' ? 'attention' : 'recent',
-  })
 }
 
 function jsonBytes(value: unknown): number {
@@ -279,21 +256,11 @@ export class LocalHostAgentProvider implements HostAgentProvider {
       normalizeSession(observationState.apply(session)),
     ]))
     managed.forEach((session) => {
-      if (!sessionsById.has(session.id)) sessionsById.set(session.id, syntheticManagedSession(session))
+      if (!sessionsById.has(session.id)) sessionsById.set(session.id, controlSessionRow(session))
     })
     this.live.snapshot().agents.forEach((agent) => {
       if (!sessionsById.has(agent.id)) {
-        sessionsById.set(agent.id, normalizeSession({
-          id: agent.id,
-          title: agent.title,
-          cwd: agent.cwd,
-          workspace: agent.workspace,
-          createdAt: agent.openedAt,
-          updatedAt: agent.updatedAt,
-          model: agent.model,
-          agent: 'Grok CLI',
-          status: agent.state === 'attention' ? 'attention' : 'live',
-        }))
+        sessionsById.set(agent.id, liveAgentRow(agent))
       }
     })
     const allSessions = [...sessionsById.values()]
@@ -301,7 +268,11 @@ export class LocalHostAgentProvider implements HostAgentProvider {
     const allWorkflows = managed
       .flatMap((session) => session.workflows)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    const usage = new UsageLedger(observationState).report({
+    const usage = new UsageLedger(observationState).reportFromInputs({
+      sessions: allSessions,
+      live: this.live.snapshot().agents,
+      managed,
+    }, {
       period: '30d',
       scope: 'sessions',
       groupBy: 'project',
@@ -347,7 +318,7 @@ export class LocalHostAgentProvider implements HostAgentProvider {
     const recorded = await this.store.session(id)
     const session = recorded
       ? observationState.apply(recorded)
-      : managed ? syntheticManagedSession(managed) : null
+      : managed ? controlSessionRow(managed) : null
     if (!session) return null
     const transcript = mergeSessionFeed(
       await this.sessionReader.transcript(session),
@@ -397,7 +368,12 @@ export class LocalHostAgentProvider implements HostAgentProvider {
   ): Promise<UsageReport> {
     await this.start()
     const observationState = await this.readState()
-    return boundedUsage(new UsageLedger(observationState).report({ period, scope, groupBy }))
+    const dashboard = await this.store.dashboard()
+    return boundedUsage(new UsageLedger(observationState).reportFromInputs({
+      sessions: dashboard.sessions.map((session) => observationState.apply(session)),
+      live: this.live.snapshot().agents,
+      managed: observationState.managedSessions(),
+    }, { period, scope, groupBy }))
   }
 
   async close(): Promise<void> {
