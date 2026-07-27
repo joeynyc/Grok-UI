@@ -369,11 +369,12 @@ server/
   workflow-state.ts       workflow notification projection and safe controls
   live-monitor.ts         active process and runtime event projection
   usage-ledger.ts         provenance-aware durable usage reporting
-  host-agent.ts            authenticated read-only host protocol
-  fleet-protocol.ts        versioned parsing, caps, and host namespacing
-  fleet-registry.ts        atomic private connection registry
-  fleet-connectors.ts      bounded direct, Tailscale, and SSH transports
-  fleet-monitor.ts         polling, compatibility, health, and freshness
+  session-projection.ts   shared local session-to-row projection
+  host-agent.ts           authenticated read-only host protocol
+  fleet-protocol.ts       versioned parsing, caps, and host namespacing
+  fleet-registry.ts       atomic private connection registry
+  fleet-connectors.ts     bounded direct, Tailscale, and SSH transports
+  fleet-monitor.ts        polling, compatibility, health, and freshness
   grok-store.ts           historical metadata aggregation
   session-reader.ts       bounded conversation and tool timeline
   session-state.ts        durable managed lanes and local annotations
@@ -383,15 +384,18 @@ src/
   views/ControlView.tsx   command deck and approval queue
   views/WorkflowsView.tsx cross-session workflow command field
   views/UsageView.tsx     time- and dimension-based usage ledger
-  views/FleetView.tsx     central fleet health and remote telemetry
+  views/FleetView.tsx     fleet page coordination and registry actions
+  views/fleet/            status, editor, selectors, and telemetry panels
   views/ChangesView.tsx   live repository change workbench
   views/SessionWorkbench.tsx
                             session timeline and operations
   App.tsx                 dashboard shell and event-stream client
+  styles/fleet.css        Fleet-only presentation
 ```
 
 The longer design and trust-boundary notes live in
-[docs/architecture.md](docs/architecture.md).
+[docs/architecture.md](docs/architecture.md). Concrete edit routing and safety
+invariants live in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md).
 
 ## Project status
 

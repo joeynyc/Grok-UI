@@ -33,15 +33,19 @@ The staged design, security constraints, and release gate are tracked in
 
 ## v0.10 — Multi-machine monitoring
 
-- Introduce a lightweight host agent and central host registry.
+- Introduce a lightweight host agent and transactional central host registry.
 - Support authenticated SSH-forwarded and Tailscale-oriented connectivity
-  without invoking a shell or probing arbitrary endpoints.
+  without invoking a shell or probing arbitrary endpoints. SSH readiness,
+  duplicate local-forward prevention, fixed-path parsing, and bounded reads are
+  implemented on the unreleased v0.10 branch.
 - Report host identity, Grok UI and agent versions, capabilities, health,
   latency, last seen, and freshness.
 - Make connecting, healthy, degraded, stale, offline, incompatible,
   unauthorized, and unavailable behavior explicit.
 - Aggregate remote sessions, workflows, runtime state, and usage while keeping
-  the first multi-machine release strictly read-only.
+  the first multi-machine release strictly read-only. The Fleet page is split
+  into independently owned status, editor, selector, and telemetry modules so
+  the release boundary can be reviewed without a monolithic UI surface.
 
 The protocol, security constraints, verification matrix, and approval-gated
 release plan are tracked in

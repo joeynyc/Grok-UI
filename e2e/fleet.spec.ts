@@ -172,6 +172,10 @@ test.describe.serial('read-only fleet monitoring', () => {
     const privatePanels: string[] = []
     for (const tab of ['Overview', 'Sessions', 'Runs', 'Runtime', 'Usage']) {
       await page.getByRole('tab', { name: tab }).click()
+      if (tab === 'Sessions') {
+        await page.locator('.fleet-inspect-session').first().click()
+        await expect(page.locator('.fleet-session-detail')).toBeVisible()
+      }
       privatePanels.push(await page.locator('body').innerText())
     }
     const privateBody = privatePanels.join('\n')

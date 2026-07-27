@@ -103,6 +103,12 @@ overwrite annotations, managed sessions, usage, budgets, or alerts. Remote
 snapshots remain freshness-qualified observations; a cached snapshot is never
 silently labeled live after its collection window expires.
 
+Registry changes are serialized as complete transactions. A candidate registry
+is validated and written through a temporary file before it replaces the
+in-memory view. A failed write therefore cannot expose state that was never
+durable, and the write queue recovers for the next operation. Enabled SSH hosts
+must use distinct loopback forwarding ports.
+
 `fleet.json` uses schema version 1 and is capped at 32 entries. If the file is
 malformed, contains an invalid entry, or uses a future version, Grok UI
 preserves it instead of replacing it, loads an empty fleet so the local
@@ -114,6 +120,13 @@ aging below 15 seconds, stale from 15 to below 45 seconds, and expired at 45
 seconds. The status layer keeps connection, health, compatibility, and
 authentication failures explicit rather than collapsing them into one offline
 state.
+
+Manual refreshes coalesce with an in-flight poll and wait for that observation
+to finish. Poll completion emits only when the fleet projection changes; normal
+polls do not force duplicate full-fleet SSE frames. Aggregate compaction tracks
+per-host serialized deltas instead of repeatedly serializing the growing fleet.
+SSH polling begins only after the forwarded loopback port accepts a connection,
+within the original bounded request deadline.
 
 ### Remote read-only boundary
 
@@ -146,3 +159,50 @@ Privacy Mode applies stable presentation aliases to host and remote workload
 values in the browser. As with local data, it is a screen-sharing safeguard
 rather than an authorization boundary: an authenticated browser can receive
 the underlying operational fleet contract.
+
+## Repository ownership
+
+The canonical architecture document remains this lowercase file. Do not create
+a second `ARCHITECTURE.md`; update this map when ownership moves.
+
+| Responsibility | Owner |
+| --- | --- |
+| Browser shell, navigation, local and fleet SSE lifecycle | `src/App.tsx` |
+| Fleet page coordination, selection, filters, and registry actions | `src/views/FleetView.tsx` |
+| Fleet selectors, caps, formatting, and availability derivation | `src/views/fleet/model.ts` |
+| Fleet status and freshness presentation | `src/views/fleet/status.tsx` |
+| Fleet host registry editor | `src/views/fleet/HostEditor.tsx` |
+| Read-only remote telemetry panels | `src/views/fleet/panels/` |
+| Fleet-only visual rules | `src/styles/fleet.css` |
+| Host-agent HTTP boundary and local observer composition | `server/host-agent.ts` |
+| Shared local session-to-row projection | `server/session-projection.ts` |
+| Wire parsing, caps, namespacing, and control stripping | `server/fleet-protocol.ts` |
+| Atomic registry persistence and registry validation | `server/fleet-registry.ts` |
+| Fixed-path HTTP/Tailscale/SSH connectivity | `server/fleet-connectors.ts` |
+| Polling, compatibility, health, freshness, and aggregation | `server/fleet-monitor.ts` |
+| Central authenticated routes and local composition root | `server/index.ts` |
+| Durable local session/usage state | `server/session-state.ts`, `server/usage-ledger.ts` |
+
+Dependencies flow from page and panel rendering into shared client types and
+API helpers; rendering never owns network policy. The fleet monitor depends on
+the registry, connector, and protocol layers; those layers do not import the
+browser. The host agent and central server share local projections rather than
+copying their mapping logic.
+
+Generated `dist/`, `dist-server/`, Playwright reports, coverage output, package
+archives, and temporary state directories are disposable and must not be
+treated as source.
+
+## Verification
+
+Use the narrowest relevant checks while editing, then run the complete gate:
+
+```text
+npm run check
+npm test
+npm run verify
+npm run test:e2e
+npm run test:soak
+npm run test:package
+npm audit --omit=dev --audit-level=high
+```

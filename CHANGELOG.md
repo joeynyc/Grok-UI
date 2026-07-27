@@ -26,6 +26,14 @@
 - Expanded the release gate to run the production dependency audit and require
   current multi-host integration, browser, 75-second soak, packed-install,
   privacy, and security evidence.
+- Hardened the release candidate after independent architecture review:
+  registry writes are transactional and recover after failure, standalone
+  usage includes current observers without becoming a second state writer,
+  explicit refresh waits for in-flight polling, unchanged fleet frames are
+  suppressed, SSH waits for forwarding readiness, and remote detail parsing is
+  bounded in both server and browser.
+- Split the Fleet experience into focused status, editor, selector, telemetry,
+  and stylesheet modules with an agent-facing ownership and verification guide.
 
 v0.10 remains unreleased. It must not be merged, tagged, published, or released
 until the completion matrix passes and the user explicitly approves those
