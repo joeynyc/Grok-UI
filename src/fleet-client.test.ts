@@ -41,6 +41,7 @@ function fleet(hosts: unknown[]) {
   return {
     generatedAt: new Date().toISOString(),
     protocolVersion: 1,
+    registryError: '',
     pollIntervalMs: 5_000,
     staleAfterMs: 15_000,
     offlineAfterMs: 45_000,
@@ -62,6 +63,7 @@ describe('fleet client boundary', () => {
     const parsed = parseFleetSnapshot(fleet([host()]))
     expect(parsed.hosts[0].label).toBe('Studio Mac')
     expect(parsed.hosts[0].config.hasToken).toBe(true)
+    expect(parsed.registryError).toBe('')
   })
 
   it('rejects registry payloads above the host cap', () => {

@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleOff, Clock3, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CircleOff, Clock3, LoaderCircle, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { FleetHostView } from '../../types'
 import {
@@ -38,6 +38,15 @@ export function SectionState({
         </div>
         {children}
       </>
+    )
+  }
+  if (availability === 'connecting') {
+    return (
+      <div className="fleet-section-state is-connecting">
+        <LoaderCircle className="is-spinning" size={25} />
+        <strong>Connecting to host</strong>
+        <span>This section will appear after the first authenticated snapshot arrives.</span>
+      </div>
     )
   }
   const detail = availability === 'stale'

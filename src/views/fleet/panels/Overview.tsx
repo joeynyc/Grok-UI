@@ -1,9 +1,11 @@
-import { Activity, Braces, Database, Server, ShieldCheck, Workflow, Zap } from 'lucide-react'
+import { Activity, Braces, Clock3, Database, Server, ShieldCheck, Workflow, Zap } from 'lucide-react'
 import { usePrivacy } from '../../../privacy'
 import type { FleetHostView } from '../../../types'
 import {
   capabilities,
+  elapsedLabel,
   hostVersions,
+  isHistoricalHost,
   integer,
   sessions,
   workflows,
@@ -20,9 +22,16 @@ export function FleetOverview({ host }: { host: FleetHostView }) {
     session.status === 'live' || session.status === 'attention').length
   const runtime = host.snapshot?.runtime
   const usage = host.snapshot?.usage
+  const historical = isHistoricalHost(host)
 
   return (
     <div className="fleet-overview">
+      {historical && (
+        <div className="fleet-partial-note is-stale" role="status">
+          <Clock3 size={14} />
+          Cached overview from {elapsedLabel(host.lastSeen)}. Values are not live.
+        </div>
+      )}
       <section className="fleet-overview-card fleet-identity-card">
         <header><Server size={15} /><span>HOST IDENTITY</span></header>
         <dl>

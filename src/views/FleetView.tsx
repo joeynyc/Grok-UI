@@ -85,6 +85,7 @@ export function FleetView({
   const [refreshingId, setRefreshingId] = useState('')
   const [notice, setNotice] = useState<FleetNotice | null>(null)
   const [actionError, setActionError] = useState('')
+  const visibleError = fleetError || fleet?.registryError || actionError
 
   const visibleHosts = useMemo(() => {
     const normalized = privacy.enabled ? '' : query.trim().toLowerCase()
@@ -222,13 +223,13 @@ export function FleetView({
         </button>
       </section>
 
-      {(fleetError || actionError || noticeText) && (
+      {(visibleError || noticeText) && (
         <div
-          className={`fleet-notice ${fleetError || actionError ? 'is-error' : 'is-success'}`}
-          role={fleetError || actionError ? 'alert' : 'status'}
+          className={`fleet-notice ${visibleError ? 'is-error' : 'is-success'}`}
+          role={visibleError ? 'alert' : 'status'}
         >
-          {fleetError || actionError ? <ShieldAlert size={16} /> : <Check size={16} />}
-          <span>{fleetError || actionError ? privacy.content(fleetError || actionError) : noticeText}</span>
+          {visibleError ? <ShieldAlert size={16} /> : <Check size={16} />}
+          <span>{visibleError ? privacy.content(visibleError) : noticeText}</span>
         </div>
       )}
 

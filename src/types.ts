@@ -616,6 +616,7 @@ export interface FleetHostView {
 export interface FleetSnapshot {
   generatedAt: string
   protocolVersion: number
+  registryError: string
   pollIntervalMs: number
   staleAfterMs: number
   offlineAfterMs: number

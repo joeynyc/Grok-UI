@@ -239,6 +239,22 @@ test.describe.serial('read-only fleet monitoring', () => {
       timeout: 10_000,
     }).toBe('healthy')
     await expect(page.locator('.fleet-status-narrative.status-healthy')).toBeVisible()
+
+    const disabled = await page.request.patch(`/api/fleet/hosts/${hostId}`, {
+      data: { enabled: false },
+    })
+    expect(disabled.ok()).toBe(true)
+    await expect.poll(() => fleetStatus(page.request, 'Healthy Workstation')).toBe('unavailable')
+    await expect(page.locator('.fleet-status-narrative.status-unavailable')).toBeVisible()
+    await expect(page.getByText(/Cached sessions snapshot/)).toBeVisible()
+
+    const reenabled = await page.request.patch(`/api/fleet/hosts/${hostId}`, {
+      data: { enabled: true },
+    })
+    expect(reenabled.ok()).toBe(true)
+    await expect.poll(() => fleetStatus(page.request, 'Healthy Workstation'), {
+      timeout: 10_000,
+    }).toBe('healthy')
   })
 
   test('keeps the fleet view readable and within a mobile viewport', async ({ page }) => {

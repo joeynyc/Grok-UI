@@ -112,6 +112,7 @@ export function parseFleetSnapshot(value: unknown): FleetSnapshot {
     !snapshot
     || typeof snapshot.generatedAt !== 'string'
     || typeof snapshot.protocolVersion !== 'number'
+    || typeof snapshot.registryError !== 'string'
     || !Array.isArray(snapshot.hosts)
     || snapshot.hosts.length > FLEET_HOST_CAP
     || !record(snapshot.totals)

@@ -15,6 +15,7 @@ export type SectionAvailability =
   | 'stale'
   | 'incompatible'
   | 'unauthorized'
+  | 'connecting'
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
 
@@ -48,6 +49,7 @@ export function emptyFleet(): FleetSnapshot {
   return {
     generatedAt: new Date().toISOString(),
     protocolVersion: 1,
+    registryError: '',
     pollIntervalMs: 0,
     staleAfterMs: 0,
     offlineAfterMs: 0,
@@ -101,6 +103,8 @@ export function sectionAvailability(
 ): SectionAvailability {
   if (host.status === 'unauthorized') return 'unauthorized'
   if (host.status === 'incompatible') return 'incompatible'
+  if (host.status === 'connecting') return host.snapshot ? 'stale' : 'connecting'
+  if (host.status === 'unavailable') return host.snapshot ? 'stale' : 'unavailable'
   if (host.status === 'stale' || host.status === 'offline') return 'stale'
   const declared = host.snapshot?.sections[section]
   if (declared) return declared
@@ -121,4 +125,13 @@ export function matchesFilter(host: FleetHostView, filter: FleetFilter): boolean
   if (filter === 'offline') return host.status === 'offline'
   return ['connecting', 'degraded', 'stale', 'incompatible', 'unauthorized', 'unavailable']
     .includes(host.status)
+}
+
+export function isHistoricalHost(host: FleetHostView): boolean {
+  return Boolean(host.snapshot)
+    && (
+      host.consecutiveFailures > 0
+      || ['connecting', 'stale', 'offline', 'incompatible', 'unauthorized', 'unavailable']
+        .includes(host.status)
+    )
 }

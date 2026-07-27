@@ -32,6 +32,9 @@
   explicit refresh waits for in-flight polling, unchanged fleet frames are
   suppressed, SSH waits for forwarding readiness, and remote detail parsing is
   bounded in both server and browser.
+- Invalidated old in-flight observations when connection settings change,
+  labeled retained snapshots as historical outside live-compatible states, and
+  surfaced preserved registry-load failures directly in the Fleet experience.
 - Split the Fleet experience into focused status, editor, selector, telemetry,
   and stylesheet modules with an agent-facing ownership and verification guide.
 

@@ -50,6 +50,7 @@ interface HostState {
   hello: AgentHello | null
   snapshot: AgentSnapshot | null
   contentSignature: string
+  configGeneration: number
   nextAttemptMs: number
   inFlight: Promise<void> | null
 }
@@ -126,6 +127,7 @@ function initialState(config: FleetHostConfig, now: number): HostState {
     hello: null,
     snapshot: null,
     contentSignature: '',
+    configGeneration: 0,
     nextAttemptMs: now,
     inFlight: null,
   }
@@ -241,6 +243,8 @@ export class FleetMonitor extends EventEmitter {
         || previous.config.sshPort !== config.sshPort
         || previous.config.localPort !== config.localPort
         || previous.config.remotePort !== config.remotePort
+      const enabledChanged = previous.config.enabled !== config.enabled
+      if (connectionChanged || enabledChanged) previous.configGeneration += 1
       previous.config = config
       if (connectionChanged) {
         this.connector.closeHost?.(id)
@@ -415,7 +419,20 @@ export class FleetMonitor extends EventEmitter {
 
   private async poll(state: HostState, force: boolean): Promise<void> {
     if (state.inFlight) {
-      if (force) await state.inFlight
+      if (force) {
+        const joined = state.inFlight
+        const joinedGeneration = state.configGeneration
+        await joined
+        if (
+          state.config.enabled
+          && (
+            state.configGeneration !== joinedGeneration
+            || state.nextAttemptMs <= this.now()
+          )
+        ) {
+          await this.poll(state, true)
+        }
+      }
       return
     }
     if (!force && state.nextAttemptMs > this.now()) return
@@ -430,6 +447,9 @@ export class FleetMonitor extends EventEmitter {
   }
 
   private async pollHost(state: HostState): Promise<void> {
+    const config = state.config
+    const generation = state.configGeneration
+    const isCurrent = () => state.configGeneration === generation && state.config.enabled
     state.lastAttemptMs = this.now()
     if (!state.lastSeenMs) {
       state.status = 'connecting'
@@ -437,7 +457,8 @@ export class FleetMonitor extends EventEmitter {
     }
     const startedAt = this.now()
     try {
-      const hello = normalizeAgentHello(await this.getJson(state.config, '/agent/v1/hello'))
+      const hello = normalizeAgentHello(await this.getJson(config, '/agent/v1/hello'))
+      if (!isCurrent()) return
       state.hello = hello
       state.contentSignature = observedContentSignature(hello, state.snapshot)
       if (!protocolCompatible(hello)) {
@@ -449,8 +470,9 @@ export class FleetMonitor extends EventEmitter {
         return
       }
       const snapshot = normalizeAgentSnapshot(
-        await this.getJson(state.config, '/agent/v1/snapshot'),
+        await this.getJson(config, '/agent/v1/snapshot'),
       )
+      if (!isCurrent()) return
       if (snapshot.protocolVersion !== FLEET_PROTOCOL_VERSION) {
         state.status = 'incompatible'
         state.statusDetail = `Agent snapshot protocol ${snapshot.protocolVersion} is unsupported.`
@@ -459,7 +481,7 @@ export class FleetMonitor extends EventEmitter {
       }
       const receivedAt = this.now()
       const latency = Math.max(0, receivedAt - startedAt)
-      const scoped = hostScopeSnapshot(state.config.id, snapshot)
+      const scoped = hostScopeSnapshot(config.id, snapshot)
       const degraded = degradedSnapshot(scoped, latency)
       state.snapshot = scoped
       state.contentSignature = observedContentSignature(hello, scoped)
@@ -470,6 +492,7 @@ export class FleetMonitor extends EventEmitter {
       state.statusDetail = degraded
       state.nextAttemptMs = receivedAt + this.pollIntervalMs
     } catch (error) {
+      if (!isCurrent()) return
       const failure = error instanceof FleetConnectionError
         ? error
         : new FleetConnectionError('malformed', 'Host agent returned an invalid protocol payload.')

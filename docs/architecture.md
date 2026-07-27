@@ -112,8 +112,8 @@ must use distinct loopback forwarding ports.
 `fleet.json` uses schema version 1 and is capped at 32 entries. If the file is
 malformed, contains an invalid entry, or uses a future version, Grok UI
 preserves it instead of replacing it, loads an empty fleet so the local
-dashboard remains available, reports `registryError`, and blocks registry
-mutations until the file is repaired.
+dashboard remains available, reports `registryError` in the Fleet view, and
+blocks registry mutations until the file is repaired.
 
 Freshness is derived from the last successful sample: fresh below 10 seconds,
 aging below 15 seconds, stale from 15 to below 45 seconds, and expired at 45
@@ -127,6 +127,13 @@ polls do not force duplicate full-fleet SSE frames. Aggregate compaction tracks
 per-host serialized deltas instead of repeatedly serializing the growing fleet.
 SSH polling begins only after the forwarded loopback port accepts a connection,
 within the original bounded request deadline.
+
+Each poll is stamped with the host connection generation. Changing credentials,
+transport, endpoint, forwarding ports, or enabled state invalidates older
+in-flight results; a refresh waiting on the older request then polls the current
+configuration. Cached snapshots retained during reconnect, disablement,
+incompatibility, or failure are explicitly labeled historical in both section
+panels and the overview.
 
 ### Remote read-only boundary
 

@@ -99,15 +99,21 @@ class MockConnector implements FleetConnector {
   blockedHost = ''
   blocker: Promise<void> | null = null
   snapshotRevision = 0
+  rejectedToken = ''
+  requests: Array<{ token: string; path: string }> = []
 
   constructor(private readonly advance?: (milliseconds: number) => void) {}
 
   async getJson(host: FleetHostConfig, fixedPath: string): Promise<unknown> {
     this.active += 1
     this.maximumActive = Math.max(this.maximumActive, this.active)
+    this.requests.push({ token: host.token, path: fixedPath })
     try {
       if (host.id === this.blockedHost && this.blocker) await this.blocker
       await new Promise((resolve) => setTimeout(resolve, 2))
+      if (host.token === this.rejectedToken) {
+        throw new FleetConnectionError('unauthorized', 'Old token rejected.', 401)
+      }
       const mode = this.modes.get(host.id) || 'healthy'
       if (mode === 'offline') throw new FleetConnectionError('offline', 'Disconnected.')
       if (mode === 'unauthorized') throw new FleetConnectionError('unauthorized', 'Token rejected.', 401)
@@ -266,6 +272,38 @@ describe('FleetMonitor', () => {
       release()
       await Promise.all([background, explicit])
       expect(explicitCompleted).toBe(true)
+    } finally {
+      await monitor.stop()
+    }
+  })
+
+  it('discards an in-flight result after connection settings change and polls the new config', async () => {
+    const { registry, hosts } = await setup()
+    const connector = new MockConnector()
+    const monitor = new FleetMonitor(registry, connector)
+    await monitor.start()
+    try {
+      connector.requests = []
+      let release = () => {}
+      connector.blockedHost = hosts[0].id
+      connector.blocker = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const background = monitor.refresh(hosts[0].id)
+      while (!connector.active) await new Promise((resolve) => setTimeout(resolve, 1))
+
+      await registry.update(hosts[0].id, { token: 'rotated-token' })
+      monitor.syncRegistry()
+      connector.rejectedToken = hosts[0].token
+      const refreshed = monitor.refresh(hosts[0].id)
+      release()
+      await Promise.all([background, refreshed])
+
+      expect(connector.requests.some((request) => request.token === 'rotated-token')).toBe(true)
+      expect(monitor.snapshot().hosts[0]).toMatchObject({
+        status: 'healthy',
+        consecutiveFailures: 0,
+      })
     } finally {
       await monitor.stop()
     }

@@ -28,6 +28,7 @@ const required = [
   'bin/grok-ui.mjs',
   'dist/index.html',
   'dist-server/index.js',
+  'dist-server/host-agent-entry.js',
   'package.json',
   'README.md',
   'LICENSE',
