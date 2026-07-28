@@ -77,6 +77,19 @@ async function listFilesNamed(root: string, fileName: string, depth = 4): Promis
   return found
 }
 
+// Installer/cache bulk under ~/.grok (bin, downloads, …) can dominate I/O when
+// sizing the whole home. Skip those top-level dirs so dashboard rebuilds stay
+// bounded to session/library data (keeps the event loop responsive under load).
+const DIRECTORY_SIZE_SKIP = new Set([
+  'bin',
+  'downloads',
+  'vendor',
+  'marketplace-cache',
+  'bundled',
+  'node_modules',
+  '.git',
+])
+
 async function directorySize(root: string, depth = 5): Promise<number> {
   let total = 0
   async function walk(current: string, level: number) {
@@ -89,8 +102,10 @@ async function directorySize(root: string, depth = 5): Promise<number> {
     }
     await Promise.all(entries.map(async (entry) => {
       const full = path.join(current, entry.name)
-      if (entry.isDirectory()) await walk(full, level + 1)
-      else if (entry.isFile()) {
+      if (entry.isDirectory()) {
+        if (level === 0 && DIRECTORY_SIZE_SKIP.has(entry.name)) return
+        await walk(full, level + 1)
+      } else if (entry.isFile()) {
         try {
           const stat = await fs.stat(full)
           const allocatedBytes = Number(stat.blocks || 0) * 512
@@ -325,7 +340,10 @@ export class GrokStore {
   }
 
   async dashboard(force = false): Promise<DashboardPayload> {
-    if (!force && this.cache && Date.now() - this.cache.at < 2_000) return this.cache.payload
+    // 5s cache — full rebuild walks sessions + library + memory + data size.
+    // 2s was short enough that the live-monitor liveness timer kept the
+    // event loop busy under multi-session load.
+    if (!force && this.cache && Date.now() - this.cache.at < 5_000) return this.cache.payload
 
     const sessionsRoot = path.join(this.grokHome, 'sessions')
     const summaryFiles = await listFilesNamed(sessionsRoot, 'summary.json', 3)

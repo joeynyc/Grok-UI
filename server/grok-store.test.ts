@@ -131,12 +131,14 @@ describe('GrokStore', () => {
       timestamp: 1784887264,
       params: { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Pushed by watcher' } } },
     })}`
+    // updates.jsonl is not chokidar-watched (high churn); live feed refreshes
+    // on the liveness timer. Append + wait for the next live emission.
     const nextSnapshotPromise = new Promise<ReturnType<LiveMonitor['snapshot']>>((resolve, reject) => {
       const retry = setInterval(() => void fs.appendFile(path.join(sessionDir, 'updates.jsonl'), pushedLine), 250)
       const timeout = setTimeout(() => {
         clearInterval(retry)
-        reject(new Error('Live watcher did not emit'))
-      }, 5_000)
+        reject(new Error('Live monitor did not emit after updates.jsonl append'))
+      }, 10_000)
       monitor.once('live', (nextSnapshot) => {
         clearInterval(retry)
         clearTimeout(timeout)

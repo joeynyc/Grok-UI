@@ -319,10 +319,16 @@ export class LiveMonitor extends EventEmitter {
       path.join(this.store.grokHome, 'agents'),
     ], {
       ignoreInitial: true,
+      // Heavy write paths during agent turns - watching them floods refresh.
+      // Live feed still tails updates/events on the liveness timer below.
       ignored: [
         /[/\\]terminal[/\\]/,
         /[/\\]rewind_points/,
         /[/\\]chat_history/,
+        /[/\\]recap_requests[/\\]/,
+        /[/\\]memtrace[/\\]/,
+        '**/updates.jsonl',
+        '**/events.jsonl',
       ],
     })
     this.watcher.on('all', (_event, changedPath) => {
@@ -332,7 +338,8 @@ export class LiveMonitor extends EventEmitter {
       }
     })
     await new Promise<void>((resolve) => this.watcher?.once('ready', () => resolve()))
-    this.livenessTimer = setInterval(() => this.scheduleRefresh(), 2_000)
+    // Live feed still tails updates/events on this timer; no need for 2s under load.
+    this.livenessTimer = setInterval(() => this.scheduleRefresh(), 4_000)
   }
 
   async stop(): Promise<void> {
@@ -350,7 +357,7 @@ export class LiveMonitor extends EventEmitter {
 
   private scheduleRefresh() {
     if (this.refreshTimer) clearTimeout(this.refreshTimer)
-    this.refreshTimer = setTimeout(() => void this.refresh(), 80)
+    this.refreshTimer = setTimeout(() => void this.refresh(), 250)
   }
 
   private scheduleDashboard() {
