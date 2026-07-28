@@ -19,7 +19,7 @@ and move through your complete local history without leaving the browser.
 <img src="docs/grok-ui-dashboard.png" width="900" alt="Grok UI Event Horizon dashboard with live runtime telemetry"/>
 
 [**Watch the 24-second product tour**](https://github.com/joeynyc/Grok-UI/releases/download/v0.5.1/grok-ui-dashboard-tour-final-white-logo.mp4)
-· [**See what’s new in v0.9.0**](https://github.com/joeynyc/Grok-UI/releases/tag/v0.9.0)
+· [**See what’s new in v0.10.0**](https://github.com/joeynyc/Grok-UI/releases/tag/v0.10.0)
 · [**Quickstart**](#quickstart) · [**What it does**](#what-it-does)
 · [**Architecture**](#architecture) · [**Security**](#privacy-and-security)
 
@@ -401,11 +401,9 @@ invariants live in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md).
 
 Grok UI is a community project. Its local monitor, control, workbench, runtime,
 usage, and Git inspection paths are functional and covered by automated tests.
-v0.10 multi-machine monitoring is under verification and remains unreleased
-until its completion matrix passes and the user explicitly approves merge,
-tag, and publication. Packed releases are installed and launched in isolation
-on macOS and Linux CI. Grok Build, ACP, and the fleet protocol can evolve, so
-compatibility fixes may be needed for future releases.
+v0.10 multi-machine monitoring is released. Packed releases are installed and
+launched in isolation on macOS and Linux CI. Grok Build, ACP, and the fleet
+protocol can evolve, so compatibility fixes may be needed for future releases.
 
 ## License
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.0 — Unreleased
+## 0.10.0 — 2026-07-28
 
 - Added a lightweight, bearer-authenticated host agent that reuses the existing
   session, workflow, runtime, and usage projections through a versioned
@@ -37,10 +37,6 @@
   surfaced preserved registry-load failures directly in the Fleet experience.
 - Split the Fleet experience into focused status, editor, selector, telemetry,
   and stylesheet modules with an agent-facing ownership and verification guide.
-
-v0.10 remains unreleased. It must not be merged, tagged, published, or released
-until the completion matrix passes and the user explicitly approves those
-actions.
 
 ## 0.9.0 — 2026-07-26
 

@@ -44,8 +44,8 @@ central fleet monitor interoperate, that configured hosts can disconnect and
 recover during the 75-second soak, and that every remote surface remains
 read-only. A passing build or unit suite alone is not release evidence.
 
-Do not merge, tag, publish, or create a v0.10 release until the user explicitly
-approves those actions.
+v0.10 passed these gates and received explicit approval before its tag,
+npm publication, and GitHub release were created.
 
 To publish an existing GitHub tag that predates npm publication, open the
 Release workflow in GitHub Actions, choose **Run workflow**, and enter the
