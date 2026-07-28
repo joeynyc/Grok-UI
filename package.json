@@ -28,6 +28,7 @@
     "dist/",
     "dist-server/",
     "scripts/doctor.mjs",
+    "scripts/windows/",
     "CHANGELOG.md",
     "LICENSE",
     "README.md",

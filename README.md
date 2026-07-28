@@ -167,6 +167,21 @@ accepts natural-language follow-ups, presents Grok's exact permission choices,
 and can interrupt the current turn. It is not a remote terminal and exposes no
 arbitrary shell.
 
+### Windows desktop launcher
+
+On Windows you can install a one-click Desktop / Start Menu icon that starts the
+local server (via a durable Scheduled Task), opens the browser, and survives
+short-lived terminal or agent shells:
+
+```powershell
+npm install -g grok-ui
+powershell -ExecutionPolicy Bypass -File "$env:APPDATA\npm\node_modules\grok-ui\scripts\windows\Install-DesktopLauncher.ps1"
+```
+
+Full options, uninstall, logs, and taskbar-pin notes:
+[docs/windows-desktop-launcher.md](docs/windows-desktop-launcher.md).
+
+
 ### Run from source
 
 ```bash
