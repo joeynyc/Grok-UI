@@ -57,7 +57,8 @@ provides them—never guessed or auto-approved.
 
 Open any recorded CLI session or managed lane for its conversation,
 reasoning, tool timeline, permission queue, token usage, and follow-up
-controls. Managed sessions survive dashboard restarts.
+controls. Start a detected web app preview on loopback and test it at desktop,
+tablet, or mobile widths without leaving the session.
 
 </td>
 <td width="50%" valign="top">
@@ -159,6 +160,21 @@ cancels pending permissions, preserves final tool updates, surfaces a retry when
 Grok does not confirm, and leaves the lane ready to resume. Rename and archive
 actions are local Grok UI overlays; Grok’s own session files are never rewritten.
 
+## Session previews
+
+The Session Workbench detects `dev` or `start` scripts in a session workspace
+and shows the exact command before anything runs. Starting a preview launches a
+separate process without a shell, binds the child to loopback, and publishes it
+at `preview.localhost` through a cookie-stripping proxy so dashboard session
+cookies never reach generated code. Generic scripts only receive `HOST`/`PORT`
+and are labeled best-effort. Package managers may still invoke a shell
+internally even though Grok UI itself uses `shell: false`. A bounded output tail
+streams into the workbench.
+
+The preview surface includes desktop, tablet, and mobile widths, reload and
+external-open controls, and an explicit Stop action. Preview processes are
+ephemeral and are terminated when Grok UI shuts down.
+
 ## Themes
 
 Two complete visual systems ship with the dashboard:
@@ -173,8 +189,15 @@ Theme selection stays in local browser storage and never changes session data.
 - The server binds to the loopback interface by default.
 - Non-loopback binding requires `GROK_UI_TOKEN`.
 - Grok credentials never pass through the browser.
+- Preview processes bind to loopback, are framed at `preview.localhost`,
+  receive no Grok credentials or dashboard cookies, and start only after an
+  explicit user action.
+- Generic preview scripts are best-effort: `HOST=127.0.0.1` is advisory if the
+  script ignores it.
 - Persistent Privacy Mode replaces visible session names, paths, identifiers,
   event content, and file names with stable presentation-safe aliases.
+- Privacy Mode suppresses embedded application previews and redacts preview
+  commands and logs.
 - Privacy Mode protects recordings and screen shares; it is not an access-control
   boundary. Authorized browser clients can still receive the underlying local data.
 - Authentication cookies are `HttpOnly` and `SameSite=Strict`.
@@ -233,6 +256,7 @@ server/
   grok-store.ts           historical metadata aggregation
   session-reader.ts       bounded conversation and tool timeline
   session-state.ts        durable managed lanes and local annotations
+  preview-supervisor.ts   loopback web preview lifecycle and bounded logs
   workspace-inspector.ts  live Git status and bounded diff inspection
   security.ts             local and remote access gate
 src/

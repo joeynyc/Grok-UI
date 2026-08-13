@@ -13,6 +13,18 @@ async function registerLiveSession() {
   const timestamp = new Date().toISOString()
   await fs.mkdir(sessionDirectory, { recursive: true })
   await Promise.all([
+    fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify({
+      scripts: { dev: 'node preview-server.mjs' },
+    })),
+    fs.writeFile(path.join(workspace, 'preview-server.mjs'), `
+      import http from 'node:http'
+      const port = Number(process.env.PORT)
+      const host = process.env.HOST
+      http.createServer((_request, response) => {
+        response.setHeader('Content-Type', 'text/html')
+        response.end('<main><h1>Build preview online</h1><p>Session-scoped loopback app</p></main>')
+      }).listen(port, host, () => console.log('e2e preview ready on ' + host + ':' + port))
+    `),
     fs.writeFile(path.join(sessionDirectory, 'summary.json'), JSON.stringify({
       info: { id: sessionId, cwd: workspace },
       generated_title: 'Confidential Launch',
@@ -148,6 +160,28 @@ test.describe.serial('public launch path', () => {
     await page.reload()
     await expect(page.getByRole('button', { name: 'Privacy on' })).toHaveAttribute('aria-pressed', 'true')
     expect(await page.locator('body').innerText()).not.toContain('secret-client')
+  })
+
+  test('launches and controls a responsive session preview', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText('Confidential Launch').first()).toBeVisible()
+    await page.getByRole('button', { name: /Open workbench/ }).click()
+    await page.getByRole('button', { name: /Preview/ }).click()
+
+    await expect(page.getByText(/npm run dev/)).toBeVisible()
+    await page.locator('.preview-toolbar').getByRole('button', { name: 'Start preview' }).click()
+    await expect(page.getByText('LOOPBACK PREVIEW')).toBeVisible({ timeout: 10_000 })
+    await expect(page.frameLocator('iframe[title="Session application preview"]').getByRole('heading', {
+      name: 'Build preview online',
+    })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Mobile preview' }).click()
+    await expect(page.locator('.preview-viewport')).toHaveClass(/viewport-mobile/)
+    await page.getByRole('button', { name: 'Reload preview' }).click()
+
+    await page.locator('.preview-toolbar').getByRole('button', { name: 'Stop' }).click()
+    await expect(page.getByText('Preview process stopped.')).toBeVisible()
+    await expect(page.getByText('Preview is offline')).toBeVisible()
   })
 
   test('launches and approves a managed ACP control session', async ({ page }) => {

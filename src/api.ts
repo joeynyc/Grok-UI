@@ -6,6 +6,7 @@ import type {
   SessionWorkbenchData,
   LiveSnapshot,
   SetupStatus,
+  PreviewSnapshot,
   WorkspaceDiff,
   WorkspaceSnapshot,
 } from './types'
@@ -129,4 +130,25 @@ export async function cancelWorkbenchSession(sessionId: string): Promise<void> {
   await json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/cancel`, {
     method: 'POST',
   }), 'Unable to cancel session')
+}
+
+export async function getSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
+  return json(
+    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview`, {
+      headers: { Accept: 'application/json' },
+    }),
+    'Preview request failed',
+  )
+}
+
+export async function startSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
+  return json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview/start`, {
+    method: 'POST',
+  }), 'Unable to start preview')
+}
+
+export async function stopSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
+  return json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview/stop`, {
+    method: 'POST',
+  }), 'Unable to stop preview')
 }

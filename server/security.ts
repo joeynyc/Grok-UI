@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import type express from 'express'
+import { PREVIEW_PUBLIC_HOST } from './preview-supervisor.js'
 
 const SESSION_COOKIE = 'grok_ui_session'
 const SESSION_TTL_MS = 12 * 60 * 60_000
@@ -43,7 +44,7 @@ export class SecurityGate {
     response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
     response.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'",
+      `default-src 'self'; base-uri 'none'; frame-ancestors 'none'; frame-src 'self' http://${PREVIEW_PUBLIC_HOST}:*; form-action 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'`,
     )
     if (_request.path.startsWith('/api/')) response.setHeader('Cache-Control', 'no-store')
     next()

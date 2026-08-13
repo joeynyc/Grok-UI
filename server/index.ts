@@ -11,6 +11,7 @@ import { mergeSessionFeed, SessionReader } from './session-reader.js'
 import type { ControlSession, LiveAgent, SessionRow } from './types.js'
 import { APP_VERSION } from './app-version.js'
 import { inspectSetup } from './setup-diagnostics.js'
+import { PreviewSupervisor } from './preview-supervisor.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
@@ -21,6 +22,7 @@ const controller = new GrokController(sessionState)
 await controller.restore()
 const workspaceInspector = new WorkspaceInspector()
 const sessionReader = new SessionReader(store.grokHome)
+const previewSupervisor = new PreviewSupervisor()
 const port = Number(process.env.PORT || 4310)
 const host = process.env.HOST || '127.0.0.1'
 const security = new SecurityGate(host)
@@ -322,6 +324,41 @@ app.post('/api/sessions/:id/cancel', async (request, response) => {
   }
 })
 
+app.get('/api/sessions/:id/preview', async (request, response) => {
+  const session = await resolveSession(request.params.id)
+  if (!session) {
+    response.status(404).json({ error: 'Session not found' })
+    return
+  }
+  response.json(await previewSupervisor.inspect(session.id, session.cwd))
+})
+
+app.post('/api/sessions/:id/preview/start', async (request, response) => {
+  const session = await resolveSession(request.params.id)
+  if (!session) {
+    response.status(404).json({ error: 'Session not found' })
+    return
+  }
+  try {
+    response.status(202).json(await previewSupervisor.start(session.id, session.cwd))
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to start preview.' })
+  }
+})
+
+app.post('/api/sessions/:id/preview/stop', async (request, response) => {
+  const session = await resolveSession(request.params.id)
+  if (!session) {
+    response.status(404).json({ error: 'Session not found' })
+    return
+  }
+  try {
+    response.json(await previewSupervisor.stop(session.id))
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to stop preview.' })
+  }
+})
+
 app.get('/api/events', (request, response) => {
   response.setHeader('Content-Type', 'text/event-stream')
   response.setHeader('Cache-Control', 'no-cache')
@@ -376,7 +413,12 @@ console.log(`Remote authentication ${security.authRequired ? 'enabled' : 'not re
 
 async function shutdown() {
   server.close()
-  await Promise.all([liveMonitor.stop(), controller.stop(), workspaceInspector.close()])
+  await Promise.all([
+    liveMonitor.stop(),
+    controller.stop(),
+    workspaceInspector.close(),
+    previewSupervisor.close(),
+  ])
   process.exit(0)
 }
 

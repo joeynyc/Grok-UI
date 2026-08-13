@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Added session-scoped web app previews to the Session Workbench.
+- Added framework-aware `dev` and `start` script detection for Vite, Astro,
+  SvelteKit, Next.js, and environment-driven development servers.
+- Added explicit preview start, stop, reload, external-open, and responsive
+  desktop, tablet, and mobile controls.
+- Added a loopback-only preview supervisor with bounded logs, shell-free process
+  spawning, serialized start/stop, SIGTERM then SIGKILL termination, and
+  browser-level lifecycle coverage.
+- Isolated preview origins on `preview.localhost` behind a cookie-stripping
+  proxy so dashboard session cookies are not sent to generated applications.
+- Labeled generic `HOST`/`PORT` preview recipes as best-effort binds.
+
 ## 0.6.0 — 2026-07-25
 
 - Added confirmed cancellation states for dashboard-managed Grok turns.

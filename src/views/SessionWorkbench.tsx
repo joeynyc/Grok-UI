@@ -8,32 +8,41 @@ import {
   CircleStop,
   Clock3,
   CornerDownLeft,
+  ExternalLink,
   FileCode2,
   FolderGit2,
   GitBranch,
   LoaderCircle,
+  Monitor,
   Pencil,
+  Play,
   Radio,
   RefreshCw,
   ShieldAlert,
+  Smartphone,
   Sparkles,
+  Tablet,
   TerminalSquare,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   cancelWorkbenchSession,
+  getSessionPreview,
   getSessionWorkbench,
   getWorkspaceDiff,
   getWorkspaceSnapshot,
   promptControlSession,
   resolveControlPermission,
+  startSessionPreview,
+  stopSessionPreview,
   updateSession,
 } from '../api'
 import type {
   ControlSnapshot,
   LiveFeedItem,
   LiveSnapshot,
+  PreviewSnapshot,
   SessionRow,
   SessionWorkbenchData,
   WorkspaceDiff,
@@ -41,7 +50,8 @@ import type {
 } from '../types'
 import { usePrivacy } from '../privacy'
 
-type WorkbenchTab = 'timeline' | 'changes' | 'specs'
+type WorkbenchTab = 'timeline' | 'preview' | 'changes' | 'specs'
+type PreviewViewport = 'desktop' | 'tablet' | 'mobile'
 
 interface SessionWorkbenchProps {
   sessionId: string
@@ -103,6 +113,12 @@ export function SessionWorkbench({
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null)
   const [diff, setDiff] = useState<WorkspaceDiff | null>(null)
   const [selectedFile, setSelectedFile] = useState('')
+  const [preview, setPreview] = useState<PreviewSnapshot | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewViewport, setPreviewViewport] = useState<PreviewViewport>('desktop')
+  const [previewRevision, setPreviewRevision] = useState(0)
+  const [previewError, setPreviewError] = useState('')
   const feedRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async (quiet = false) => {
@@ -135,11 +151,29 @@ export function SessionWorkbench({
     }
   }, [data?.session.cwd, fallback?.cwd, selectedFile])
 
+  const refreshPreview = useCallback(async (quiet = false) => {
+    if (!quiet) setPreviewLoading(true)
+    try {
+      setPreview(await getSessionPreview(sessionId))
+      if (!quiet) setPreviewError('')
+    } catch (requestError) {
+      if (!quiet) {
+        setPreviewError(requestError instanceof Error ? requestError.message : 'Unable to inspect the preview.')
+      }
+    } finally {
+      if (!quiet) setPreviewLoading(false)
+    }
+  }, [sessionId])
+
   useEffect(() => {
     setData(null)
     setWorkspace(null)
     setDiff(null)
     setSelectedFile('')
+    setPreview(null)
+    setPreviewViewport('desktop')
+    setPreviewRevision(0)
+    setPreviewError('')
     setLoading(true)
     setError('')
     setMessage('')
@@ -165,6 +199,13 @@ export function SessionWorkbench({
     const timer = window.setTimeout(() => void refreshWorkspace(), 220)
     return () => window.clearTimeout(timer)
   }, [controlSignal, liveSignal, refreshWorkspace, tab])
+
+  useEffect(() => {
+    if (tab !== 'preview') return
+    void refreshPreview()
+    const timer = window.setInterval(() => void refreshPreview(true), 1_000)
+    return () => window.clearInterval(timer)
+  }, [refreshPreview, tab])
 
   useEffect(() => {
     if (!feedRef.current) return
@@ -234,6 +275,34 @@ export function SessionWorkbench({
       await Promise.all([refresh(true), onUpdated()])
     } catch (archiveError) {
       setError(archiveError instanceof Error ? archiveError.message : 'Unable to change archive state.')
+    }
+  }
+
+  const startPreview = async () => {
+    setPreviewBusy(true)
+    setPreviewError('')
+    setMessage('')
+    try {
+      setPreview(await startSessionPreview(sessionId))
+      setMessage('Preview process launched on loopback.')
+    } catch (startError) {
+      setPreviewError(startError instanceof Error ? startError.message : 'Unable to start preview.')
+    } finally {
+      setPreviewBusy(false)
+    }
+  }
+
+  const stopPreview = async () => {
+    setPreviewBusy(true)
+    setPreviewError('')
+    setMessage('')
+    try {
+      setPreview(await stopSessionPreview(sessionId))
+      setMessage('Preview process stopped.')
+    } catch (stopError) {
+      setPreviewError(stopError instanceof Error ? stopError.message : 'Unable to stop preview.')
+    } finally {
+      setPreviewBusy(false)
     }
   }
 
@@ -329,6 +398,9 @@ export function SessionWorkbench({
           <button className={tab === 'timeline' ? 'is-active' : ''} onClick={() => setTab('timeline')}>
             <Radio size={15} /> Timeline <span>{transcript.length}</span>
           </button>
+          <button className={tab === 'preview' ? 'is-active' : ''} onClick={() => setTab('preview')}>
+            <Monitor size={15} /> Preview <span>{preview?.status === 'running' ? 'live' : preview?.status || '—'}</span>
+          </button>
           <button className={tab === 'changes' ? 'is-active' : ''} onClick={() => setTab('changes')}>
             <FileCode2 size={15} /> Changes <span>{workspace?.files.length || session?.filesTouched || 0}</span>
           </button>
@@ -355,6 +427,20 @@ export function SessionWorkbench({
               permissions={data?.permissions || []}
               feedRef={feedRef}
               onDecide={decide}
+            />
+          ) : tab === 'preview' ? (
+            <Preview
+              preview={preview}
+              error={previewError}
+              loading={previewLoading}
+              busy={previewBusy}
+              viewport={previewViewport}
+              revision={previewRevision}
+              onStart={startPreview}
+              onStop={stopPreview}
+              onRefresh={refreshPreview}
+              onReload={() => setPreviewRevision((value) => value + 1)}
+              onViewport={setPreviewViewport}
             />
           ) : tab === 'changes' ? (
             <Changes
@@ -392,6 +478,136 @@ export function SessionWorkbench({
           <small>{control?.connected ? '⌘ ↵ to send' : 'ACP control offline'}</small>
         </form>
       </section>
+    </div>
+  )
+}
+
+function Preview({
+  preview,
+  error,
+  loading,
+  busy,
+  viewport,
+  revision,
+  onStart,
+  onStop,
+  onRefresh,
+  onReload,
+  onViewport,
+}: {
+  preview: PreviewSnapshot | null
+  error: string
+  loading: boolean
+  busy: boolean
+  viewport: PreviewViewport
+  revision: number
+  onStart: () => Promise<void>
+  onStop: () => Promise<void>
+  onRefresh: (quiet?: boolean) => Promise<void>
+  onReload: () => void
+  onViewport: (viewport: PreviewViewport) => void
+}) {
+  const privacy = usePrivacy()
+  if (loading && !preview) {
+    return <div className="workbench-loading"><LoaderCircle size={22} className="is-spinning" /><span>Inspecting preview contract…</span></div>
+  }
+  if (!preview?.available) {
+    return (
+      <div className="workbench-empty preview-empty">
+        <div className="preview-empty-mark"><Monitor size={26} /><span /></div>
+        <strong>No preview command detected</strong>
+        <p>{preview?.error || error || 'Add a package.json dev or start script to this session workspace.'}</p>
+        <button onClick={() => void onRefresh()}><RefreshCw size={14} /> Inspect again</button>
+      </div>
+    )
+  }
+
+  const active = preview.status === 'starting' || preview.status === 'running'
+  return (
+    <div className="workbench-preview">
+      <div className="preview-head">
+        {error && (
+          <div className="preview-error" role="alert">
+            <ShieldAlert size={14} />
+            <span>{privacy.content(error)}</span>
+          </div>
+        )}
+        <header className="preview-toolbar">
+        <div className="preview-address">
+          <span className={`preview-signal status-${preview.status}`} />
+          <div>
+            <small>{preview.status === 'running' ? 'LOOPBACK PREVIEW' : preview.status.toUpperCase()}</small>
+            <strong>{preview.url || 'Waiting to launch'}</strong>
+          </div>
+        </div>
+        <div className="preview-devices" role="group" aria-label="Preview viewport">
+          <button className={viewport === 'desktop' ? 'is-active' : ''} onClick={() => onViewport('desktop')} aria-label="Desktop preview"><Monitor size={15} /></button>
+          <button className={viewport === 'tablet' ? 'is-active' : ''} onClick={() => onViewport('tablet')} aria-label="Tablet preview"><Tablet size={15} /></button>
+          <button className={viewport === 'mobile' ? 'is-active' : ''} onClick={() => onViewport('mobile')} aria-label="Mobile preview"><Smartphone size={15} /></button>
+        </div>
+        <div className="preview-actions">
+          <button onClick={onReload} disabled={preview.status !== 'running'} aria-label="Reload preview"><RefreshCw size={15} /></button>
+          <button
+            onClick={() => window.open(preview.url, '_blank', 'noopener,noreferrer')}
+            disabled={preview.status !== 'running' || privacy.enabled}
+            aria-label="Open preview in new tab"
+          >
+            <ExternalLink size={15} />
+          </button>
+          {active ? (
+            <button className="preview-stop" onClick={() => void onStop()} disabled={busy}>
+              <CircleStop size={15} /> Stop
+            </button>
+          ) : (
+            <button className="preview-start" onClick={() => void onStart()} disabled={busy}>
+              {busy ? <LoaderCircle className="is-spinning" size={15} /> : <Play size={15} />}
+              {preview.status === 'failed' ? 'Restart' : 'Start preview'}
+            </button>
+          )}
+        </div>
+        </header>
+      </div>
+
+      <div className="preview-stage">
+        <div className={`preview-viewport viewport-${viewport}`}>
+          {preview.status === 'running' && !privacy.enabled ? (
+            <iframe
+              key={`${preview.url}:${revision}`}
+              src={preview.url}
+              title="Session application preview"
+              sandbox="allow-downloads allow-forms allow-modals allow-pointer-lock allow-same-origin allow-scripts"
+            />
+          ) : preview.status === 'running' ? (
+            <div className="preview-standby preview-private">
+              <ShieldAlert size={28} />
+              <strong>Preview hidden by Privacy Mode</strong>
+              <p>Turn Privacy Mode off when you are ready to display the generated application.</p>
+            </div>
+          ) : (
+            <div className="preview-standby">
+              {preview.status === 'starting' ? <LoaderCircle className="is-spinning" size={28} /> : <Monitor size={28} />}
+              <strong>{preview.status === 'starting' ? 'Waiting for the development server' : 'Preview is offline'}</strong>
+              <p>{preview.error || 'Start the detected command when you are ready to run generated code.'}</p>
+              {!active && (
+                <button onClick={() => void onStart()} disabled={busy}>
+                  {busy ? <LoaderCircle className="is-spinning" size={15} /> : <Play size={15} />}
+                  {preview.status === 'failed' ? 'Restart preview' : 'Start preview'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <footer className="preview-console">
+        <div>
+          <span><TerminalSquare size={13} /> PREVIEW PROCESS</span>
+          <code>{privacy.content(preview.displayCommand)}</code>
+        </div>
+        <pre>{preview.logs.length
+          ? privacy.content(preview.logs.slice(-8).join('\n'))
+          : 'Command output will appear here after launch.'}</pre>
+      </footer>
     </div>
   )
 }

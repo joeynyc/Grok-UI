@@ -36,6 +36,30 @@ Managed lanes retain a bounded event tail and usage totals. If the server exits 
 
 Diff paths are resolved beneath the repository root. Reads are bounded, binary content is not rendered, and untracked files are represented without leaving the repository.
 
+## Preview plane
+
+`PreviewSupervisor` detects package scripts only inside the workspace associated
+with a known session. The browser cannot provide an arbitrary preview working
+directory or command.
+
+Starting a preview binds the child on `127.0.0.1` and publishes it through a
+cookie-stripping proxy at `http://preview.localhost:<port>`. That hostname is
+a different cookie host from `127.0.0.1` and `localhost`. The proxy also
+drops `Cookie` and `Authorization` before they reach generated code. Known
+frameworks receive explicit loopback host flags. Other scripts only get
+`HOST`/`PORT` as a best-effort bind; they may still listen on `0.0.0.0` if
+they ignore `HOST`.
+
+Spawn uses argument separation and `shell: false`. Package managers may still
+invoke a shell internally to run the script body. Start and stop are serialized
+per session and terminate with `SIGTERM`, a short wait, then `SIGKILL`. Output
+is stripped of terminal control sequences and kept as a bounded in-memory tail.
+Preview processes are not restored after a restart and are stopped during
+graceful server shutdown.
+
+The application iframe uses the `preview.localhost` origin and a sandbox.
+Spawn env also omits Grok credentials and the Grok UI token.
+
 ## Network boundary
 
 The production server binds to the loopback interface by default. A non-loopback host requires `GROK_UI_TOKEN`.
