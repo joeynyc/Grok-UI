@@ -137,8 +137,8 @@ export function HostEditor({
           <button type="button" onClick={onClose} aria-label="Close host registry editor"><X size={18} /></button>
         </header>
         <p>
-          Connection settings stay on this central machine. Monitoring remains read-only;
-          secure remote sessions require a separate host-issued control token.
+          Connection settings stay on this machine. Monitoring stays read-only until you
+          turn on remote sessions with a separate control token.
         </p>
         {privacy.enabled && host && (
           <div className="fleet-editor-privacy"><ShieldCheck size={14} /> Sensitive values are hidden. Leave a field blank to keep its current value.</div>
@@ -250,8 +250,8 @@ export function HostEditor({
               onChange={(event) => setControlEnabled(event.target.checked)}
             />
             <span>
-              <strong>Secure remote sessions</strong>
-              <small>Allow chat, exact permission decisions, and turn interruption.</small>
+              <strong>Remote sessions</strong>
+              <small>Continue Grok chats from this machine. Needs a separate control token.</small>
             </span>
           </label>
         </div>

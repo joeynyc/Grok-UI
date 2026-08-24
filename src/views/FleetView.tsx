@@ -19,7 +19,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { refreshFleetHost } from '../api'
 import { usePrivacy } from '../privacy'
 import type { FleetHostView, FleetSnapshot, SessionRow } from '../types'
@@ -29,6 +29,7 @@ import {
   hostEndpoint,
   integer,
   matchesFilter,
+  preferredHostTab,
   sectionAvailability,
   sessions,
   type FleetFilter,
@@ -87,6 +88,7 @@ export function FleetView({
   const [refreshingId, setRefreshingId] = useState('')
   const [notice, setNotice] = useState<FleetNotice | null>(null)
   const [actionError, setActionError] = useState('')
+  const landedRemoteSessions = useRef(false)
   const visibleError = fleetError || fleet?.registryError || actionError
 
   const visibleHosts = useMemo(() => {
@@ -110,9 +112,18 @@ export function FleetView({
   useEffect(() => {
     if (!hosts.length) {
       setSelectedId('')
+      landedRemoteSessions.current = false
       return
     }
     if (!hosts.some((host) => host.id === selectedId)) setSelectedId(hosts[0].id)
+  }, [hosts, selectedId])
+
+  useEffect(() => {
+    if (landedRemoteSessions.current) return
+    const current = hosts.find((host) => host.id === selectedId) || hosts[0]
+    if (!current?.config.controlEnabled) return
+    setTab('sessions')
+    landedRemoteSessions.current = true
   }, [hosts, selectedId])
 
   useEffect(() => {
@@ -185,7 +196,7 @@ export function FleetView({
         </div>
         <div className="fleet-trust-note">
           <ShieldCheck size={16} />
-          <span><strong>HOST-AUTHORIZED</strong> Monitoring stays read-only unless a host explicitly enables secure remote sessions.</span>
+          <span>Hosts stay read-only until you turn on remote sessions.</span>
         </div>
       </section>
 
@@ -249,7 +260,7 @@ export function FleetView({
                 aria-pressed={selected?.id === host.id}
                 onClick={() => {
                   setSelectedId(host.id)
-                  setTab('overview')
+                  setTab(preferredHostTab(host, tab))
                 }}
                 key={host.id}
               >
@@ -369,6 +380,7 @@ export function FleetView({
             setSelectedId(hostId)
             setEditorHost(null)
             const saved = next.hosts.find((item) => item.id === hostId)
+            setTab(preferredHostTab(saved, tab))
             setNotice({ kind: 'saved', hostId, hostLabel: saved?.label || 'Host' })
           }}
           onRemoved={(id) => {

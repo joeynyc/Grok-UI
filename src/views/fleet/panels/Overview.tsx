@@ -66,8 +66,9 @@ export function FleetOverview({ host }: { host: FleetHostView }) {
       </section>
       <p className="fleet-readonly-explainer">
         <ShieldCheck size={15} />
-        This monitor can read negotiated snapshots only. It cannot start work, send prompts,
-        resolve permissions, control runs, execute a shell, or probe arbitrary endpoints.
+        {host.config.controlEnabled
+          ? 'Remote sessions are on. Open Sessions to keep chatting on this host.'
+          : 'This monitor reads snapshots only. It cannot start work, send prompts, resolve permissions, control runs, execute a shell, or probe arbitrary endpoints.'}
       </p>
     </div>
   )
