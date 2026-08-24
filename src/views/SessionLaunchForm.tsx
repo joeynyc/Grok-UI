@@ -24,6 +24,10 @@ export function uniqueWorkspaces(data: DashboardPayload, live: LiveSnapshot | nu
   ].filter(Boolean))]
 }
 
+export function canLaunchSession(control: ControlSnapshot | null): boolean {
+  return Boolean(control?.connected)
+}
+
 export function listResumable(
   data: DashboardPayload,
   control: ControlSnapshot | null,
@@ -125,6 +129,24 @@ export function SessionLaunchForm({
     }
   }
 
+  if (!canLaunchSession(control)) {
+    return (
+      <section className="composer-panel panel-cut">
+        <header>
+          <div>
+            <span className="panel-index">{index}</span>
+            <h2>{heading}</h2>
+          </div>
+        </header>
+        <p className="composer-note">
+          {control?.reconnecting
+            ? 'Reconnecting control. CLI sessions still appear here.'
+            : 'Control is offline. CLI sessions still appear here. Starting a session from the dashboard needs control.'}
+        </p>
+      </section>
+    )
+  }
+
   return (
     <form className="composer-panel panel-cut" onSubmit={submit}>
       <header>
@@ -216,9 +238,7 @@ export function SessionLaunchForm({
         <CornerDownLeft size={17} />
       </button>
       <p className="composer-note">
-        {control?.connected
-          ? 'Tool executions still pass through Grok’s native permission system. Nothing is silently auto-approved.'
-          : 'Control is offline. The dashboard can still watch CLI sessions, but it cannot start one until control reconnects.'}
+        Tool executions still pass through Grok’s native permission system. Nothing is silently auto-approved.
       </p>
     </form>
   )

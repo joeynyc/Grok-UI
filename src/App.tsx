@@ -1243,6 +1243,12 @@ function Overview({
   onNavigate: (view: ViewId) => void
 }) {
   const recent = data.sessions.filter((session) => !session.archived).slice(0, 6)
+  const activityTotals = data.activity.reduce((acc, day) => ({
+    turns: acc.turns + day.turns,
+    tools: acc.tools + day.toolCalls,
+    errors: acc.errors + day.errors,
+    lines: acc.lines + day.linesChanged,
+  }), { turns: 0, tools: 0, errors: 0, lines: 0 })
   return (
     <>
       <PageIntro
@@ -1288,24 +1294,19 @@ function Overview({
         />
       </section>
 
-      <section className="two-col-grid section-gap">
-        <Panel
-          className="activity-panel"
-          index="02"
-          title="Fourteen-day signal"
-          action={<button className="text-button" onClick={() => onNavigate('activity')}>Full telemetry <ArrowRight size={14} /></button>}
-        >
-          <ActivityChart days={data.activity} />
-        </Panel>
-        <Panel index="03" title="Tool signature" meta={`${data.tools.length} detected`}>
-          <RankedBars data={data.tools.slice(0, 6)} empty="No tool signals recorded yet." />
-        </Panel>
+      <section className="signal-metrics section-gap">
+        <SignalMetric label="Turns" value={formatNumber(activityTotals.turns)} icon={TimerReset} />
+        <SignalMetric label="Tool calls" value={formatNumber(activityTotals.tools)} icon={ToolCase} />
+        <SignalMetric label="Lines moved" value={formatNumber(activityTotals.lines)} icon={FileCode2} />
+        <SignalMetric label="Errors" value={formatNumber(activityTotals.errors)} icon={CircleAlert} warning={activityTotals.errors > 0} />
       </section>
-
+      <Panel className="wide-activity section-gap" index="02" title="Last 14 days">
+        <ActivityMatrix days={data.activity} />
+      </Panel>
       <section className="two-col-grid section-gap lower-grid">
         <Panel
           className="recent-panel"
-          index="04"
+          index="03"
           title="Recent sessions"
           meta={`${live?.activeCount || 0} live now`}
           action={<button className="text-button" onClick={() => onNavigate('sessions')}>View archive <ArrowRight size={14} /></button>}
@@ -1313,6 +1314,9 @@ function Overview({
           <SessionList sessions={recent} onOpen={onOpenSession} />
         </Panel>
         <div className="side-stack">
+          <Panel index="04" title="Tool signature" meta={`${data.tools.length} detected`}>
+            <RankedBars data={data.tools.slice(0, 6)} empty="No tool signals recorded yet." />
+          </Panel>
           <Panel index="05" title="Model mix" meta={`${data.models.length} in rotation`}>
             <ModelMix data={data.models} />
           </Panel>
@@ -1343,7 +1347,7 @@ function SystemCard({
       <div className="system-card-copy">
         <div className="kicker"><Zap size={14} fill="currentColor" /> Runtime corpus</div>
         <div className="hero-number">{formatNumber(data.stats.sessions)}</div>
-        <div className="hero-label">SESSIONS ON RECORD</div>
+        <div className="hero-label">Sessions recorded</div>
         <div className="system-readouts">
           <div><span>Live agents</span><strong>{live?.activeCount || 0}</strong></div>
           <div><span>Capabilities</span><strong>{data.stats.skills}</strong></div>
@@ -1355,7 +1359,7 @@ function SystemCard({
         <div className="orbit orbit-two" />
         <div className="orbit-center">
           <span>{Math.round(health)}</span>
-          <small title="Calculated from recorded errors per turn">DERIVED HEALTH</small>
+          <small title="Calculated from recorded errors per turn">Health</small>
         </div>
         <div className="orbit-node node-one" />
         <div className="orbit-node node-two" />
@@ -1432,38 +1436,6 @@ function Panel({
       </header>
       <div className="panel-body">{children}</div>
     </section>
-  )
-}
-
-function ActivityChart({ days }: { days: ActivityDay[] }) {
-  const max = Math.max(1, ...days.map((day) => day.toolCalls))
-  const total = days.reduce((sum, day) => sum + day.toolCalls, 0)
-  const peak = [...days].sort((a, b) => b.toolCalls - a.toolCalls)[0]
-  return (
-    <div className="activity-chart">
-      <div className="chart-summary">
-        <div><strong>{formatNumber(total)}</strong><span>tool events</span></div>
-        <div><strong>{formatNumber(days.reduce((sum, day) => sum + day.turns, 0))}</strong><span>turns</span></div>
-        <div><strong>{peak?.label || '—'}</strong><span>peak day</span></div>
-      </div>
-      <div className="bar-chart" role="img" aria-label="Tool calls by day over the last fourteen days">
-        {days.map((day, index) => (
-          <div className="bar-column" key={day.date} title={`${day.date}: ${day.toolCalls} tool calls`}>
-            <div className="bar-track">
-              <div
-                className={`bar-fill ${day.errors ? 'has-error' : ''}`}
-                style={{ height: `${Math.max(4, (day.toolCalls / max) * 100)}%`, animationDelay: `${index * 35}ms` }}
-              />
-            </div>
-            <span>{day.label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="chart-legend">
-        <span><i className="legend-lime" /> Tool volume</span>
-        <span><i className="legend-coral" /> Error present</span>
-      </div>
-    </div>
   )
 }
 
