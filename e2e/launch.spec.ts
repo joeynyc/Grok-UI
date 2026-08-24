@@ -225,6 +225,10 @@ test.describe.serial('public launch path', () => {
 
     await expect(page.getByText('FIRST CONTACT / READY')).toBeVisible()
     await expect(page.getByText('Environment ready.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start a session here' })).toBeVisible()
+    await page.getByRole('button', { name: 'Start a session here' }).click()
+    await expect(page.getByRole('heading', { name: /Run the room/ })).toBeVisible()
+    await expect(page).toHaveURL(/#\/control$/)
   })
 
   test('discovers a newly registered Grok CLI session over the live stream', async ({ page }) => {
@@ -235,6 +239,13 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('1', { exact: true }).first()).toBeVisible()
     await expect(page.getByText(/Inspect secret-client/).first()).toBeVisible()
     await expect(page.getByText(/PID \d+/).first()).toBeVisible()
+    await page.getByRole('button', { name: /Open Session/ }).click()
+    await expect(page).toHaveURL(new RegExp(`#/live/${sessionId}$`))
+    await page.locator('.session-workbench').getByRole('button', { name: 'Close session console panel' }).click()
+    await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: /Sessions/ }).click()
+    await expect(page).toHaveURL(/#\/sessions$/)
+    await page.reload()
+    await expect(page.getByRole('heading', { name: /Nothing buried/ })).toBeVisible()
   })
 
   test('reconnects the browser event stream after a server interruption', async ({ page }) => {

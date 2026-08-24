@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Grouped the primary nav into Work, Look back, and System so the twelve
+  destinations stay available without competing as one list.
+- Added a first-run and idle-state Start a session here action that opens
+  Control without leaving the dashboard.
+- Added a global Needs you bar and nav badges for pending approvals and live
+  attention.
+- Persisted the active view and open session in the URL hash so refresh keeps
+  place.
+- Made the command palette honor arrow keys and Enter.
+
 ## 0.11.0 — 2026-07-30
 
 - Added an explicitly enabled Remote Session Console that lets a user start a
