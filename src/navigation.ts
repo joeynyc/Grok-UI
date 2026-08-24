@@ -33,9 +33,9 @@ export const VIEW_IDS: ViewId[] = [
 ]
 
 export const NAV_GROUPS: Array<{ id: string; label: string; items: ViewId[] }> = [
-  { id: 'work', label: 'Work', items: ['live', 'control', 'runs', 'changes', 'sessions'] },
+  { id: 'work', label: 'Work', items: ['live', 'runs', 'changes', 'sessions'] },
   { id: 'look-back', label: 'Look back', items: ['overview', 'activity', 'usage'] },
-  { id: 'system', label: 'System', items: ['fleet', 'library', 'memory', 'themes'] },
+  { id: 'system', label: 'System', items: ['fleet'] },
 ]
 
 export function isViewId(value: string): value is ViewId {
@@ -88,7 +88,6 @@ export function collectAttention(
 }
 
 export function navBadgeCount(view: ViewId, attention: AttentionState): number {
-  if (view === 'live') return attention.liveCount
-  if (view === 'control') return attention.permissionCount
+  if (view === 'live') return attention.permissionCount + attention.liveCount
   return 0
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   collectAttention,
   formatHash,
+  NAV_GROUPS,
   navBadgeCount,
   parseHash,
 } from './navigation'
@@ -33,6 +34,22 @@ describe('hash routes', () => {
 
   it('falls back to Live for unknown views and keeps the session id', () => {
     expect(parseHash('#/unknown/abc')).toEqual({ view: 'live', sessionId: 'abc' })
+  })
+})
+
+describe('primary nav', () => {
+  it('keeps Control, Library, Memory, and Themes off the primary rail', () => {
+    const items = NAV_GROUPS.flatMap((group) => group.items)
+    expect(items).toEqual([
+      'live',
+      'runs',
+      'changes',
+      'sessions',
+      'overview',
+      'activity',
+      'usage',
+      'fleet',
+    ])
   })
 })
 
@@ -87,8 +104,8 @@ describe('attention', () => {
       sessionId: 'managed-1',
       title: 'Write the verified fixture',
     })
-    expect(navBadgeCount('control', attention)).toBe(1)
-    expect(navBadgeCount('live', attention)).toBe(1)
+    expect(navBadgeCount('live', attention)).toBe(2)
+    expect(navBadgeCount('control', attention)).toBe(0)
     expect(navBadgeCount('sessions', attention)).toBe(0)
   })
 })

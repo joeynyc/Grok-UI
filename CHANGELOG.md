@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fixed Windows `npm start` by loading the server through a `file:` URL so
+  drive letters are not treated as ESM schemes.
+- Needs you now opens the session console for both live attention and
+  approvals, instead of sending people to Control.
+- Narrowed the primary nav to Live, Runs, Changes, Sessions, history, and
+  Fleet. Control, Library, Memory, and Themes stay on hash routes and the
+  command palette; Themes also sits next to Privacy.
+- Library and Memory lists are inspectable metadata, not dead inventories.
+- Quiet first-run and control copy: Setup needed, Ready to start, Control
+  connected.
 - Start a session from empty Live instead of leaving for Control. The same
   launch form stays on Control for multi-lane work.
 - Isolated session previews on `preview.localhost` behind a cookie-stripping

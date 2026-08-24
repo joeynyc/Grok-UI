@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const clientEntry = path.join(projectRoot, 'dist', 'index.html')
@@ -17,4 +17,4 @@ if (!existsSync(clientEntry) || !existsSync(serverEntry)) {
   if (build.status !== 0) process.exit(build.status || 1)
 }
 
-await import(serverEntry)
+await import(pathToFileURL(serverEntry).href)
