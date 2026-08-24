@@ -74,6 +74,14 @@ import { FleetView } from './views/FleetView'
 import { useModalFocus } from './hooks/useModalFocus'
 import { PrivacyProvider, usePrivacy } from './privacy'
 import { reconcileControlSnapshot } from './control-snapshot'
+import {
+  collectAttention,
+  NAV_GROUPS,
+  navBadgeCount,
+  parseHash,
+  writeHash,
+  type AttentionState,
+} from './navigation'
 import packageJson from '../package.json'
 
 interface NavItem {
@@ -186,8 +194,9 @@ function liveSessionStatus(session: SessionRow, live: LiveSnapshot | null): Sess
 }
 
 function App() {
+  const initialRoute = parseHash(window.location.hash)
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
-  const [view, setView] = useState<ViewId>('live')
+  const [view, setView] = useState<ViewId>(initialRoute.view)
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [live, setLive] = useState<LiveSnapshot | null>(null)
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
@@ -205,7 +214,7 @@ function App() {
     id: string
     fallback: SessionRow | null
     opener: HTMLElement | null
-  } | null>(null)
+  } | null>(initialRoute.sessionId ? { id: initialRoute.sessionId, fallback: null, opener: null } : null)
   const [remoteSession, setRemoteSession] = useState<{
     host: FleetHostView
     session: SessionRow
@@ -219,6 +228,7 @@ function App() {
   const lastInteractionRef = useRef<HTMLElement | null>(null)
   const mobileNavTriggerRef = useRef<HTMLElement | null>(null)
   const mobileNavOpenRef = useRef(false)
+  const attention = useMemo(() => collectAttention(live, control), [control, live])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -348,6 +358,28 @@ function App() {
     lastAttentionRef.current = attention
   }, [control?.permissions, live?.attentionCount, privacyMode])
 
+  useEffect(() => {
+    writeHash({ view, sessionId: selectedSession?.id || null })
+  }, [selectedSession?.id, view])
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const route = parseHash(window.location.hash)
+      setView(route.view)
+      setSelectedSession((current) => {
+        if (!route.sessionId) return null
+        if (current?.id === route.sessionId) return current
+        return {
+          id: route.sessionId,
+          fallback: data?.sessions.find((item) => item.id === route.sessionId) || null,
+          opener: null,
+        }
+      })
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [data?.sessions])
+
   const takeInteractionTarget = useCallback(() => {
     const interaction = lastInteractionRef.current?.isConnected
       ? lastInteractionRef.current
@@ -463,6 +495,7 @@ function App() {
           connected={streamConnected}
           version={data?.version || '—'}
           open={mobileNavOpen}
+          attention={attention}
           onNavigate={setActiveView}
           onClose={closeMobileNav}
         />
@@ -486,6 +519,20 @@ function App() {
           <ErrorState message={error} onRetry={() => void load(true)} />
         ) : (
           <div className="view-wrap" key={view}>
+            {!selectedSession && !remoteSession && (
+              <NeedsYouBar
+                attention={attention}
+                privacyMode={privacyMode}
+                onOpen={() => {
+                  if (!attention.primary) return
+                  if (attention.primary.kind === 'permission') {
+                    setActiveView('control')
+                    return
+                  }
+                  openSession(attention.primary.sessionId)
+                }}
+              />
+            )}
             {view === 'live' && (
               <LiveView
                 live={live}
@@ -494,6 +541,7 @@ function App() {
                 setup={setup}
                 connected={streamConnected}
                 onOpenSession={openSession}
+                onStartSession={() => setActiveView('control')}
                 onRefresh={() => void load(true)}
               />
             )}
@@ -564,6 +612,7 @@ function App() {
         {!selectedSession && !remoteSession && !paletteOpen && (
           <MobileNav
             active={view}
+            attention={attention}
             onNavigate={setActiveView}
             onMore={openMobileNav}
             suspended={mobileNavOpen}
@@ -692,6 +741,7 @@ function Sidebar({
   connected,
   version,
   open,
+  attention,
   onNavigate,
   onClose,
 }: {
@@ -699,6 +749,7 @@ function Sidebar({
   connected: boolean
   version: string
   open: boolean
+  attention: AttentionState
   onNavigate: (id: ViewId) => void
   onClose: () => void
 }) {
@@ -736,26 +787,35 @@ function Sidebar({
           </button>
         </div>
 
-        <div className="rail-label">Navigation / 01</div>
         <nav className="primary-nav" id="primary-navigation" aria-label="Primary navigation">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.id}
-                className={`nav-item ${active === item.id ? 'is-active' : ''}`}
-                onClick={() => onNavigate(item.id)}
-              >
-                <span className="nav-index">{item.index}</span>
-                <Icon size={17} strokeWidth={1.7} />
-                <span className="nav-copy">
-                  <strong>{item.label}</strong>
-                  <small>{item.eyebrow}</small>
-                </span>
-                <ChevronRight className="nav-arrow" size={15} />
-              </button>
-            )
-          })}
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group.id}>
+              <div className="rail-label">{group.label}</div>
+              {group.items.map((id) => {
+                const item = NAV_ITEMS.find((entry) => entry.id === id)
+                if (!item) return null
+                const Icon = item.icon
+                const badge = navBadgeCount(item.id, attention)
+                return (
+                  <button
+                    key={item.id}
+                    className={`nav-item ${active === item.id ? 'is-active' : ''}`}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <span className="nav-index">{item.index}</span>
+                    <Icon size={17} strokeWidth={1.7} />
+                    <span className="nav-copy">
+                      <strong>{item.label}</strong>
+                      <small>{item.eyebrow}</small>
+                    </span>
+                    {badge > 0
+                      ? <span className="nav-badge" aria-label={`${badge} need${badge === 1 ? 's' : ''} input`}>{badge}</span>
+                      : <ChevronRight className="nav-arrow" size={15} />}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -845,6 +905,7 @@ function LiveView({
   setup,
   connected,
   onOpenSession,
+  onStartSession,
   onRefresh,
 }: {
   live: LiveSnapshot | null
@@ -853,6 +914,7 @@ function LiveView({
   setup: SetupStatus | null
   connected: boolean
   onOpenSession: (session: SessionRow | string) => void
+  onStartSession: () => void
   onRefresh: () => void
 }) {
   const privacy = usePrivacy()
@@ -882,7 +944,7 @@ function LiveView({
         index="01"
         eyebrow="Live runtime"
         title={<>In the loop.<br /><em>Right now.</em></>}
-        description="A direct event stream from Grok’s active-session registry, phase engine, ACP updates, and tool lifecycle."
+        description="Watch every running Grok session as it works, waits, or needs you. Start one here, or keep using the CLI — both show up in this room."
       />
       <section className="live-summary-strip">
         <LiveSummaryMetric
@@ -912,14 +974,25 @@ function LiveView({
       </section>
 
       {!selected && data.stats.sessions === 0 ? (
-        <FirstRunOnboarding connected={connected} setup={setup} onRefresh={onRefresh} />
+        <FirstRunOnboarding
+          connected={connected}
+          setup={setup}
+          onRefresh={onRefresh}
+          onStartSession={onStartSession}
+        />
       ) : !selected ? (
         <section className="no-live-agent section-gap">
           <div className="idle-radar" aria-hidden="true"><span /><span /><i /></div>
           <div className="kicker">Runtime clear</div>
           <h2>No active Grok sessions.</h2>
-          <p>Start Grok in any workspace. The session will appear here as soon as it registers under <code>~/.grok/active_sessions.json</code>.</p>
-          <code className="launch-command">grok</code>
+          <p>Start a session from the dashboard or run Grok in any workspace. Either one appears here the moment it is live.</p>
+          <div className="idle-actions">
+            <button className="launch-button" type="button" onClick={onStartSession}>
+              <span>Start a session here</span>
+              <ArrowRight size={16} />
+            </button>
+            <code className="launch-command">grok</code>
+          </div>
         </section>
       ) : (
         <section className="live-console-grid section-gap">
@@ -1018,10 +1091,12 @@ function FirstRunOnboarding({
   connected,
   setup,
   onRefresh,
+  onStartSession,
 }: {
   connected: boolean
   setup: SetupStatus | null
   onRefresh: () => void
+  onStartSession: () => void
 }) {
   const [copied, setCopied] = useState('')
   const copy = async (command: string) => {
@@ -1077,6 +1152,10 @@ function FirstRunOnboarding({
               : setup ? 'FIRST CONTACT / SETUP REQUIRED' : 'FIRST CONTACT / CHECKING'}
           </span>
           <h2>Zero to live<br /><em>in three moves.</em></h2>
+          <button className="launch-button first-run-cta" type="button" onClick={onStartSession}>
+            <span>Start a session here</span>
+            <ArrowRight size={16} />
+          </button>
         </div>
         <div className="first-run-status">
           <span className={cli?.state === 'ready' ? 'is-ready' : 'needs-action'}><i /> Grok CLI</span>
@@ -1109,7 +1188,7 @@ function FirstRunOnboarding({
       <footer>
         <span>
           {setup?.ready && connected
-            ? <>Environment ready. Start <code>grok</code> in any project.</>
+            ? <>Environment ready. Start a session here, or run <code>grok</code> in any project.</>
             : <>Need the full terminal report? Run <code>grok-ui doctor</code>.</>}
         </span>
         <button className="text-button" onClick={onRefresh}>
@@ -1833,12 +1912,28 @@ function CommandPalette({
 }) {
   const privacy = usePrivacy()
   const [value, setValue] = useState('')
+  const [selected, setSelected] = useState(0)
   const normalized = value.toLowerCase()
   const navResults = NAV_ITEMS.filter((item) => item.label.toLowerCase().includes(normalized))
   const sessionResults = (data?.sessions || []).filter((session) =>
     !session.archived
     && [session.title, session.workspace, session.model].some((item) => item.toLowerCase().includes(normalized)),
   ).slice(0, 5)
+  const results = [
+    ...navResults.map((item) => ({ kind: 'nav' as const, item })),
+    ...sessionResults.map((session) => ({ kind: 'session' as const, session })),
+  ]
+
+  useEffect(() => {
+    setSelected(0)
+  }, [value])
+
+  const openResult = (index = selected) => {
+    const result = results[index]
+    if (!result) return
+    if (result.kind === 'nav') onNavigate(result.item.id)
+    else onSession(result.session)
+  }
 
   return (
     <div className="palette-layer" role="dialog" aria-modal="true" aria-label="Command palette">
@@ -1846,31 +1941,72 @@ function CommandPalette({
       <div className="command-palette">
         <label>
           <Command size={18} />
-          <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder="Jump to a view or local session…" />
+          <input
+            autoFocus
+            value={value}
+            aria-autocomplete="list"
+            aria-controls="command-palette-results"
+            aria-activedescendant={results[selected] ? `palette-result-${selected}` : undefined}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                setSelected((index) => (index + 1) % Math.max(results.length, 1))
+              }
+              if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                setSelected((index) => (index - 1 + results.length) % Math.max(results.length, 1))
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                openResult()
+              }
+            }}
+            placeholder="Jump to a view or local session…"
+          />
           <kbd>ESC</kbd>
         </label>
-        <div className="palette-results">
+        <div className="palette-results" id="command-palette-results" role="listbox">
           {navResults.length > 0 && <div className="palette-label">Views</div>}
-          {navResults.map((item) => {
+          {navResults.map((item, index) => {
             const Icon = item.icon
             return (
-              <button key={item.id} onClick={() => onNavigate(item.id)}>
+              <button
+                id={`palette-result-${index}`}
+                key={item.id}
+                role="option"
+                aria-selected={selected === index}
+                className={selected === index ? 'is-selected' : ''}
+                onMouseEnter={() => setSelected(index)}
+                onClick={() => openResult(index)}
+              >
                 <Icon size={16} /><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span><kbd>{item.shortcut}</kbd>
               </button>
             )
           })}
           {sessionResults.length > 0 && <div className="palette-label">Recent sessions</div>}
-          {sessionResults.map((session) => (
-            <button key={session.id} onClick={() => onSession(session)}>
-              <TerminalSquare size={16} />
-              <span>
-                <strong>{privacy.sessionTitle(session.title, session.id)}</strong>
-                <small>{privacy.workspace(session.cwd)} · {session.model}</small>
-              </span>
-              <ChevronRight size={15} />
-            </button>
-          ))}
-          {!navResults.length && !sessionResults.length && <EmptyInline>No matching destination.</EmptyInline>}
+          {sessionResults.map((session, sessionIndex) => {
+            const index = navResults.length + sessionIndex
+            return (
+              <button
+                id={`palette-result-${index}`}
+                key={session.id}
+                role="option"
+                aria-selected={selected === index}
+                className={selected === index ? 'is-selected' : ''}
+                onMouseEnter={() => setSelected(index)}
+                onClick={() => openResult(index)}
+              >
+                <TerminalSquare size={16} />
+                <span>
+                  <strong>{privacy.sessionTitle(session.title, session.id)}</strong>
+                  <small>{privacy.workspace(session.cwd)} · {session.model}</small>
+                </span>
+                <ChevronRight size={15} />
+              </button>
+            )
+          })}
+          {!results.length && <EmptyInline>No matching destination.</EmptyInline>}
         </div>
         <footer><span>↑↓ Navigate</span><span>↵ Open</span><span>Local metadata only</span></footer>
       </div>
@@ -1880,11 +2016,13 @@ function CommandPalette({
 
 function MobileNav({
   active,
+  attention,
   onNavigate,
   onMore,
   suspended,
 }: {
   active: ViewId
+  attention: AttentionState
   onNavigate: (view: ViewId) => void
   onMore: () => void
   suspended: boolean
@@ -1900,7 +2038,16 @@ function MobileNav({
     >
       {primaryItems.map((item) => {
         const Icon = item.icon
-        return <button key={item.id} className={active === item.id ? 'is-active' : ''} onClick={() => onNavigate(item.id)}><Icon size={18} /><span>{item.label}</span></button>
+        const badge = navBadgeCount(item.id, attention)
+        return (
+          <button key={item.id} className={active === item.id ? 'is-active' : ''} onClick={() => onNavigate(item.id)}>
+            <span className="mobile-nav-icon">
+              <Icon size={18} />
+              {badge > 0 && <i className="nav-badge-dot" aria-hidden="true" />}
+            </span>
+            <span>{item.label}</span>
+          </button>
+        )
       })}
       <button
         className={moreActive ? 'is-active' : ''}
@@ -1912,6 +2059,32 @@ function MobileNav({
         <span>More</span>
       </button>
     </nav>
+  )
+}
+
+function NeedsYouBar({
+  attention,
+  privacyMode,
+  onOpen,
+}: {
+  attention: AttentionState
+  privacyMode: boolean
+  onOpen: () => void
+}) {
+  if (!attention.primary) return null
+  const count = attention.permissionCount + attention.liveCount
+  const title = privacyMode
+    ? `${count} session${count === 1 ? '' : 's'} waiting for attention.`
+    : attention.primary.title
+  return (
+    <button className="needs-you-bar" type="button" onClick={onOpen}>
+      <span className="needs-you-pulse" aria-hidden="true" />
+      <span>
+        <small>Needs you</small>
+        <strong>{title}</strong>
+      </span>
+      <em>{attention.primary.kind === 'permission' ? 'Review approval' : 'Open session'} <ArrowRight size={14} /></em>
+    </button>
   )
 }
 
