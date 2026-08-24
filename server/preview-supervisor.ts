@@ -89,6 +89,10 @@ function previewUrl(port: number): string {
   return `http://${PREVIEW_PUBLIC_HOST}:${port}`
 }
 
+export function previewLoopbackUrl(port: number): string {
+  return `http://${PREVIEW_BIND_HOST}:${port}`
+}
+
 function forwardedHeaders(headers: http.IncomingHttpHeaders, targetPort: number): http.OutgoingHttpHeaders {
   const forwarded: http.OutgoingHttpHeaders = {}
   for (const [key, value] of Object.entries(headers)) {
@@ -377,7 +381,9 @@ export class PreviewSupervisor {
       && !entry.stopping
     ) {
       try {
-        const response = await fetch(entry.snapshot.url, { signal: AbortSignal.timeout(800) })
+        const response = await fetch(previewLoopbackUrl(entry.snapshot.port), {
+          signal: AbortSignal.timeout(800),
+        })
         if (!response.ok) throw new Error(`Preview returned ${response.status}`)
         if (!entry.process || entry.stopping) return
         entry.snapshot = {
@@ -422,11 +428,11 @@ export class PreviewSupervisor {
       exited,
       new Promise<void>((resolve) => setTimeout(resolve, this.terminateGraceMs)),
     ])
-    if (entry.process?.pid && child.exitCode === null && child.signalCode === null) {
+    if (processAlive(child.pid)) {
       this.signal(child, 'SIGKILL')
       await Promise.race([
         exited,
-        new Promise<void>((resolve) => setTimeout(resolve, this.terminateGraceMs)),
+        this.waitUntilDead(child.pid, this.terminateGraceMs),
       ])
     }
     entry.process = null
@@ -462,13 +468,24 @@ export class PreviewSupervisor {
     }
   }
 
+  private async waitUntilDead(pid: number, graceMs: number): Promise<void> {
+    const deadline = Date.now() + graceMs
+    while (Date.now() < deadline && processAlive(pid)) {
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+  }
+
   private signal(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
     try {
       if (process.platform !== 'win32' && child.pid) {
         process.kill(-child.pid, signal)
-      } else {
-        child.kill(signal)
+        return
       }
+    } catch {
+      // Not a process-group leader, or the group already exited.
+    }
+    try {
+      child.kill(signal)
     } catch {
       // The process may have exited between the state check and the signal.
     }

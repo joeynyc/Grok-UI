@@ -18,6 +18,7 @@ import {
   GitCompareArrows,
   Layers3,
   Menu,
+  Network,
   Palette,
   RefreshCw,
   Radio,
@@ -27,20 +28,35 @@ import {
   TerminalSquare,
   TimerReset,
   ToolCase,
+  Workflow,
+  WalletCards,
   X,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getAuthStatus, getControlSnapshot, getDashboard, getLiveSnapshot, getSetupStatus, login } from './api'
+import {
+  getAuthStatus,
+  getControlSnapshot,
+  getDashboard,
+  getFleetSnapshot,
+  getLiveSnapshot,
+  getRuntimeSnapshot,
+  getSetupStatus,
+  login,
+  parseFleetSnapshot,
+} from './api'
 import type {
   ActivityDay,
   ControlSnapshot,
   DashboardPayload,
+  FleetSnapshot,
+  FleetHostView,
   LiveAgent,
   LiveFeedItem,
   LiveSnapshot,
   RankedDatum,
+  RuntimeSnapshot,
   SessionRow,
   SetupCheckState,
   SetupStatus,
@@ -50,11 +66,27 @@ import type {
 import { ChangesView } from './views/ChangesView'
 import { ControlView } from './views/ControlView'
 import { SessionWorkbench } from './views/SessionWorkbench'
+import { RemoteSessionWorkbench } from './views/RemoteSessionWorkbench'
+import { WorkflowsView } from './views/WorkflowsView'
+import { UsageView } from './views/UsageView'
+import { RuntimeIntelligencePanels } from './views/RuntimeIntelligencePanels'
+import { FleetView } from './views/FleetView'
+import { useModalFocus } from './hooks/useModalFocus'
 import { PrivacyProvider, usePrivacy } from './privacy'
+import { reconcileControlSnapshot } from './control-snapshot'
+import {
+  collectAttention,
+  NAV_GROUPS,
+  navBadgeCount,
+  parseHash,
+  writeHash,
+  type AttentionState,
+} from './navigation'
 import packageJson from '../package.json'
 
 interface NavItem {
   id: ViewId
+  index: string
   label: string
   eyebrow: string
   icon: LucideIcon
@@ -62,16 +94,21 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'live', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
-  { id: 'control', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
-  { id: 'changes', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '3' },
-  { id: 'overview', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '4' },
-  { id: 'sessions', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '5' },
-  { id: 'activity', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '6' },
-  { id: 'library', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '7' },
-  { id: 'memory', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '8' },
-  { id: 'themes', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '9' },
+  { id: 'live', index: '01', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
+  { id: 'control', index: '02', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
+  { id: 'runs', index: '03', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '3' },
+  { id: 'changes', index: '04', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '4' },
+  { id: 'overview', index: '05', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
+  { id: 'sessions', index: '06', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
+  { id: 'activity', index: '07', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
+  { id: 'usage', index: '08', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: 'u' },
+  { id: 'fleet', index: '09', label: 'Fleet', eyebrow: 'Monitor', icon: Network, shortcut: 'f' },
+  { id: 'library', index: '10', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
+  { id: 'memory', index: '11', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
+  { id: 'themes', index: '12', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
 ]
+
+const MOBILE_NAV_IDS: ViewId[] = ['live', 'control', 'runs', 'fleet']
 
 type ThemeId = 'operator' | 'event-horizon' | 'minimal-calm'
 
@@ -157,10 +194,13 @@ function liveSessionStatus(session: SessionRow, live: LiveSnapshot | null): Sess
 }
 
 function App() {
+  const initialRoute = parseHash(window.location.hash)
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
-  const [view, setView] = useState<ViewId>('live')
+  const [view, setView] = useState<ViewId>(initialRoute.view)
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [live, setLive] = useState<LiveSnapshot | null>(null)
+  const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null)
+  const [fleet, setFleet] = useState<FleetSnapshot | null>(null)
   const [control, setControl] = useState<ControlSnapshot | null>(null)
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [streamConnected, setStreamConnected] = useState(false)
@@ -168,13 +208,27 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [fleetError, setFleetError] = useState('')
   const [query, setQuery] = useState('')
-  const [selectedSession, setSelectedSession] = useState<{ id: string; fallback: SessionRow | null } | null>(null)
+  const [selectedSession, setSelectedSession] = useState<{
+    id: string
+    fallback: SessionRow | null
+    opener: HTMLElement | null
+  } | null>(initialRoute.sessionId ? { id: initialRoute.sessionId, fallback: null, opener: null } : null)
+  const [remoteSession, setRemoteSession] = useState<{
+    host: FleetHostView
+    session: SessionRow
+    opener: HTMLElement | null
+  } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [theme, setTheme] = useState<ThemeId>(storedTheme)
   const [privacyMode, setPrivacyMode] = useState(storedPrivacy)
   const lastAttentionRef = useRef(0)
+  const lastInteractionRef = useRef<HTMLElement | null>(null)
+  const mobileNavTriggerRef = useRef<HTMLElement | null>(null)
+  const mobileNavOpenRef = useRef(false)
+  const attention = useMemo(() => collectAttention(live, control), [control, live])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -200,12 +254,14 @@ function App() {
   const load = useCallback(async (force = false) => {
     if (force) setRefreshing(true)
     try {
-      const [payload, livePayload] = await Promise.all([
+      const [payload, livePayload, runtimePayload] = await Promise.all([
         getDashboard(force),
         getLiveSnapshot(),
+        getRuntimeSnapshot(force),
       ])
       setData(payload)
       setLive(livePayload)
+      setRuntime(runtimePayload)
       setError('')
       if (payload.stats.sessions === 0) {
         void getSetupStatus(force)
@@ -215,9 +271,17 @@ function App() {
         setSetup(null)
       }
       void getControlSnapshot()
-        .then(setControl)
+        .then((next) => setControl((current) => reconcileControlSnapshot(current, next)))
         .catch(() => {
           // Dashboard and onboarding stay available if ACP is not ready yet.
+        })
+      void getFleetSnapshot()
+        .then((next) => {
+          setFleet(next)
+          setFleetError('')
+        })
+        .catch((requestError) => {
+          setFleetError(requestError instanceof Error ? requestError.message : 'Unable to read the fleet registry.')
         })
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to read Grok data')
@@ -249,11 +313,25 @@ function App() {
     })
     events.addEventListener('control', (event) => {
       setStreamConnected(true)
-      setControl(JSON.parse((event as MessageEvent).data) as ControlSnapshot)
+      const next = JSON.parse((event as MessageEvent).data) as ControlSnapshot
+      setControl((current) => reconcileControlSnapshot(current, next))
+    })
+    events.addEventListener('runtime', (event) => {
+      setStreamConnected(true)
+      setRuntime(JSON.parse((event as MessageEvent).data) as RuntimeSnapshot)
     })
     events.addEventListener('workspace', (event) => {
       setStreamConnected(true)
       setWorkspaceChange(JSON.parse((event as MessageEvent).data) as WorkspaceChangeEvent)
+    })
+    events.addEventListener('fleet', (event) => {
+      setStreamConnected(true)
+      try {
+        setFleet(parseFleetSnapshot(JSON.parse((event as MessageEvent).data)))
+        setFleetError('')
+      } catch {
+        setFleetError('The fleet stream returned an invalid snapshot.')
+      }
     })
     events.onerror = () => setStreamConnected(false)
     return () => {
@@ -281,19 +359,71 @@ function App() {
   }, [control?.permissions, live?.attentionCount, privacyMode])
 
   useEffect(() => {
+    writeHash({ view, sessionId: selectedSession?.id || null })
+  }, [selectedSession?.id, view])
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const route = parseHash(window.location.hash)
+      setView(route.view)
+      setSelectedSession((current) => {
+        if (!route.sessionId) return null
+        if (current?.id === route.sessionId) return current
+        return {
+          id: route.sessionId,
+          fallback: data?.sessions.find((item) => item.id === route.sessionId) || null,
+          opener: null,
+        }
+      })
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [data?.sessions])
+
+  const takeInteractionTarget = useCallback(() => {
+    const interaction = lastInteractionRef.current?.isConnected
+      ? lastInteractionRef.current
+      : null
+    lastInteractionRef.current = null
+    if (interaction) return interaction
+    return document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null
+  }, [])
+
+  const openMobileNav = useCallback(() => {
+    mobileNavTriggerRef.current = takeInteractionTarget()
+    mobileNavOpenRef.current = true
+    setMobileNavOpen(true)
+  }, [takeInteractionTarget])
+
+  const closeMobileNav = useCallback(() => {
+    if (!mobileNavOpenRef.current) return
+    mobileNavOpenRef.current = false
+    setMobileNavOpen(false)
+    requestAnimationFrame(() => {
+      const trigger = mobileNavTriggerRef.current
+      mobileNavTriggerRef.current = null
+      if (trigger?.isConnected) trigger.focus()
+    })
+  }, [])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       const typing = target.matches('input, textarea, [contenteditable="true"]')
+      if (selectedSession || remoteSession) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen((open) => !open)
         return
       }
       if (event.key === 'Escape') {
-        setPaletteOpen(false)
-        setSelectedSession(null)
-        setMobileNavOpen(false)
+        if (paletteOpen) setPaletteOpen(false)
+        else closeMobileNav()
+        return
       }
+      if (paletteOpen || mobileNavOpenRef.current) return
       if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         const navItem = NAV_ITEMS.find((item) => item.shortcut === event.key)
         if (navItem) setView(navItem.id)
@@ -305,48 +435,79 @@ function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [closeMobileNav, paletteOpen, remoteSession, selectedSession])
 
   const setActiveView = (next: ViewId) => {
+    const focusMain = mobileNavOpenRef.current
+    mobileNavOpenRef.current = false
+    mobileNavTriggerRef.current = null
     setView(next)
     setQuery('')
     setMobileNavOpen(false)
+    if (focusMain) {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.main-stage')?.focus()
+      })
+    }
   }
 
   const refreshControl = useCallback(async () => {
-    setControl(await getControlSnapshot())
+    const next = await getControlSnapshot()
+    setControl((current) => reconcileControlSnapshot(current, next))
+  }, [])
+
+  const refreshFleet = useCallback(async () => {
+    try {
+      const next = await getFleetSnapshot()
+      setFleet(next)
+      setFleetError('')
+    } catch (requestError) {
+      setFleetError(requestError instanceof Error ? requestError.message : 'Unable to read the fleet registry.')
+    }
   }, [])
 
   const openSession = useCallback((session: SessionRow | string) => {
+    const opener = takeInteractionTarget()
     setSelectedSession(typeof session === 'string'
-      ? { id: session, fallback: data?.sessions.find((item) => item.id === session) || null }
-      : { id: session.id, fallback: session })
-  }, [data?.sessions])
+      ? { id: session, fallback: data?.sessions.find((item) => item.id === session) || null, opener }
+      : { id: session.id, fallback: session, opener })
+  }, [data?.sessions, takeInteractionTarget])
 
   if (authenticated === null) return <BootScreen label="SECURING LOCAL LINK" />
   if (!authenticated) return <AuthScreen onAuthenticated={() => setAuthenticated(true)} />
 
   return (
     <PrivacyProvider enabled={privacyMode}>
-      <div className="app-shell" data-theme={theme} data-privacy={privacyMode ? 'on' : 'off'}>
+      <div
+        className="app-shell"
+        data-theme={theme}
+        data-privacy={privacyMode ? 'on' : 'off'}
+        onClickCapture={(event) => {
+          if (!(event.target instanceof Element)) return
+          lastInteractionRef.current = event.target.closest<HTMLElement>(
+            'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          )
+        }}
+      >
         <AmbientGrid />
         <Sidebar
           active={view}
           connected={streamConnected}
           version={data?.version || '—'}
           open={mobileNavOpen}
+          attention={attention}
           onNavigate={setActiveView}
-          onClose={() => setMobileNavOpen(false)}
+          onClose={closeMobileNav}
         />
 
-        <main className="main-stage">
+        <main className="main-stage" tabIndex={-1}>
           <TopBar
             active={view}
             connected={streamConnected}
             generatedAt={live?.generatedAt || data?.generatedAt}
             refreshing={refreshing}
             privacyMode={privacyMode}
-            onMenu={() => setMobileNavOpen(true)}
+            onMenu={openMobileNav}
             onPalette={() => setPaletteOpen(true)}
             onRefresh={() => void load(true)}
             onTogglePrivacy={() => setPrivacyMode((enabled) => !enabled)}
@@ -358,13 +519,29 @@ function App() {
           <ErrorState message={error} onRetry={() => void load(true)} />
         ) : (
           <div className="view-wrap" key={view}>
+            {!selectedSession && !remoteSession && (
+              <NeedsYouBar
+                attention={attention}
+                privacyMode={privacyMode}
+                onOpen={() => {
+                  if (!attention.primary) return
+                  if (attention.primary.kind === 'permission') {
+                    setActiveView('control')
+                    return
+                  }
+                  openSession(attention.primary.sessionId)
+                }}
+              />
+            )}
             {view === 'live' && (
               <LiveView
                 live={live}
+                runtime={runtime}
                 data={data}
                 setup={setup}
                 connected={streamConnected}
                 onOpenSession={openSession}
+                onStartSession={() => setActiveView('control')}
                 onRefresh={() => void load(true)}
               />
             )}
@@ -373,6 +550,14 @@ function App() {
                 data={data}
                 live={live}
                 control={control}
+                onRefresh={refreshControl}
+                onOpenSession={openSession}
+              />
+            )}
+            {view === 'runs' && (
+              <WorkflowsView
+                control={control}
+                connected={streamConnected}
                 onRefresh={refreshControl}
                 onOpenSession={openSession}
               />
@@ -404,6 +589,19 @@ function App() {
               />
             )}
             {view === 'activity' && <ActivityView data={data} />}
+            {view === 'usage' && <UsageView />}
+            {view === 'fleet' && (
+              <FleetView
+                fleet={fleet}
+                streamConnected={streamConnected}
+                error={fleetError}
+                onReload={refreshFleet}
+                onFleetChange={setFleet}
+                onOpenRemoteSession={(host, session) => {
+                  setRemoteSession({ host, session, opener: takeInteractionTarget() })
+                }}
+              />
+            )}
             {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
             {view === 'memory' && <MemoryView data={data} />}
             {view === 'themes' && <ThemesView active={theme} onSelect={setTheme} />}
@@ -411,15 +609,35 @@ function App() {
         )}
         </main>
 
-        <MobileNav active={view} onNavigate={setActiveView} />
+        {!selectedSession && !remoteSession && !paletteOpen && (
+          <MobileNav
+            active={view}
+            attention={attention}
+            onNavigate={setActiveView}
+            onMore={openMobileNav}
+            suspended={mobileNavOpen}
+          />
+        )}
         {selectedSession && (
           <SessionWorkbench
             sessionId={selectedSession.id}
             fallback={data?.sessions.find((item) => item.id === selectedSession.id) || selectedSession.fallback}
             live={live}
             control={control}
+            returnFocus={selectedSession.opener}
             onClose={() => setSelectedSession(null)}
             onUpdated={() => load(true)}
+          />
+        )}
+        {remoteSession && (
+          <RemoteSessionWorkbench
+            hostId={remoteSession.host.id}
+            hostLabel={remoteSession.host.label}
+            transport={remoteSession.host.transport}
+            sessionId={remoteSession.session.id}
+            fallback={remoteSession.session}
+            returnFocus={remoteSession.opener}
+            onClose={() => setRemoteSession(null)}
           />
         )}
         {paletteOpen && (
@@ -469,7 +687,7 @@ function ThemesView({
   return (
     <>
       <PageIntro
-        index="09"
+        index="12"
         eyebrow="Visual systems"
         title={<>Choose your<br /><em>command atmosphere.</em></>}
         description="Switch the entire dashboard aesthetic without changing your data, sessions, or workflow. Your selection stays active on this device."
@@ -523,6 +741,7 @@ function Sidebar({
   connected,
   version,
   open,
+  attention,
   onNavigate,
   onClose,
 }: {
@@ -530,9 +749,18 @@ function Sidebar({
   connected: boolean
   version: string
   open: boolean
+  attention: AttentionState
   onNavigate: (id: ViewId) => void
   onClose: () => void
 }) {
+  const dialogRef = useModalFocus<HTMLElement>(
+    onClose,
+    '.sidebar-close',
+    undefined,
+    open,
+    false,
+  )
+
   return (
     <>
       <button
@@ -540,7 +768,14 @@ function Sidebar({
         aria-label="Close navigation"
         onClick={onClose}
       />
-      <aside className={`sidebar ${open ? 'is-open' : ''}`}>
+      <aside
+        ref={dialogRef}
+        className={`sidebar ${open ? 'is-open' : ''}`}
+        role={open ? 'dialog' : undefined}
+        aria-modal={open ? 'true' : undefined}
+        aria-label={open ? 'Navigation menu' : undefined}
+        tabIndex={open ? -1 : undefined}
+      >
         <div className="brand-lockup">
           <BrandLogo />
           <div>
@@ -552,26 +787,35 @@ function Sidebar({
           </button>
         </div>
 
-        <div className="rail-label">Navigation / 01</div>
-        <nav className="primary-nav" aria-label="Primary navigation">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.id}
-                className={`nav-item ${active === item.id ? 'is-active' : ''}`}
-                onClick={() => onNavigate(item.id)}
-              >
-                <span className="nav-index">0{item.shortcut}</span>
-                <Icon size={17} strokeWidth={1.7} />
-                <span className="nav-copy">
-                  <strong>{item.label}</strong>
-                  <small>{item.eyebrow}</small>
-                </span>
-                <ChevronRight className="nav-arrow" size={15} />
-              </button>
-            )
-          })}
+        <nav className="primary-nav" id="primary-navigation" aria-label="Primary navigation">
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group.id}>
+              <div className="rail-label">{group.label}</div>
+              {group.items.map((id) => {
+                const item = NAV_ITEMS.find((entry) => entry.id === id)
+                if (!item) return null
+                const Icon = item.icon
+                const badge = navBadgeCount(item.id, attention)
+                return (
+                  <button
+                    key={item.id}
+                    className={`nav-item ${active === item.id ? 'is-active' : ''}`}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <span className="nav-index">{item.index}</span>
+                    <Icon size={17} strokeWidth={1.7} />
+                    <span className="nav-copy">
+                      <strong>{item.label}</strong>
+                      <small>{item.eyebrow}</small>
+                    </span>
+                    {badge > 0
+                      ? <span className="nav-badge" aria-label={`${badge} need${badge === 1 ? 's' : ''} input`}>{badge}</span>
+                      : <ChevronRight className="nav-arrow" size={15} />}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -656,17 +900,21 @@ function TopBar({
 
 function LiveView({
   live,
+  runtime,
   data,
   setup,
   connected,
   onOpenSession,
+  onStartSession,
   onRefresh,
 }: {
   live: LiveSnapshot | null
+  runtime: RuntimeSnapshot | null
   data: DashboardPayload
   setup: SetupStatus | null
   connected: boolean
   onOpenSession: (session: SessionRow | string) => void
+  onStartSession: () => void
   onRefresh: () => void
 }) {
   const privacy = usePrivacy()
@@ -696,7 +944,7 @@ function LiveView({
         index="01"
         eyebrow="Live runtime"
         title={<>In the loop.<br /><em>Right now.</em></>}
-        description="A direct event stream from Grok’s active-session registry, phase engine, ACP updates, and tool lifecycle."
+        description="Watch every running Grok session as it works, waits, or needs you. Start one here, or keep using the CLI — both show up in this room."
       />
       <section className="live-summary-strip">
         <LiveSummaryMetric
@@ -726,14 +974,25 @@ function LiveView({
       </section>
 
       {!selected && data.stats.sessions === 0 ? (
-        <FirstRunOnboarding connected={connected} setup={setup} onRefresh={onRefresh} />
+        <FirstRunOnboarding
+          connected={connected}
+          setup={setup}
+          onRefresh={onRefresh}
+          onStartSession={onStartSession}
+        />
       ) : !selected ? (
         <section className="no-live-agent section-gap">
           <div className="idle-radar" aria-hidden="true"><span /><span /><i /></div>
           <div className="kicker">Runtime clear</div>
           <h2>No active Grok sessions.</h2>
-          <p>Start Grok in any workspace. The session will appear here as soon as it registers under <code>~/.grok/active_sessions.json</code>.</p>
-          <code className="launch-command">grok</code>
+          <p>Start a session from the dashboard or run Grok in any workspace. Either one appears here the moment it is live.</p>
+          <div className="idle-actions">
+            <button className="launch-button" type="button" onClick={onStartSession}>
+              <span>Start a session here</span>
+              <ArrowRight size={16} />
+            </button>
+            <code className="launch-command">grok</code>
+          </div>
         </section>
       ) : (
         <section className="live-console-grid section-gap">
@@ -777,7 +1036,7 @@ function LiveView({
               <div className="runtime-actions">
                 <AgentStatePill agent={selected} />
                 <button className="text-button" onClick={() => onOpenSession(selectedSession || selected.id)}>
-                  Open workbench <ArrowRight size={14} />
+                  Open Session <ArrowRight size={14} />
                 </button>
               </div>
             </header>
@@ -823,6 +1082,7 @@ function LiveView({
           </section>
         </section>
       )}
+      <RuntimeIntelligencePanels runtime={runtime} />
     </>
   )
 }
@@ -831,10 +1091,12 @@ function FirstRunOnboarding({
   connected,
   setup,
   onRefresh,
+  onStartSession,
 }: {
   connected: boolean
   setup: SetupStatus | null
   onRefresh: () => void
+  onStartSession: () => void
 }) {
   const [copied, setCopied] = useState('')
   const copy = async (command: string) => {
@@ -890,6 +1152,10 @@ function FirstRunOnboarding({
               : setup ? 'FIRST CONTACT / SETUP REQUIRED' : 'FIRST CONTACT / CHECKING'}
           </span>
           <h2>Zero to live<br /><em>in three moves.</em></h2>
+          <button className="launch-button first-run-cta" type="button" onClick={onStartSession}>
+            <span>Start a session here</span>
+            <ArrowRight size={16} />
+          </button>
         </div>
         <div className="first-run-status">
           <span className={cli?.state === 'ready' ? 'is-ready' : 'needs-action'}><i /> Grok CLI</span>
@@ -922,7 +1188,7 @@ function FirstRunOnboarding({
       <footer>
         <span>
           {setup?.ready && connected
-            ? <>Environment ready. Start <code>grok</code> in any project.</>
+            ? <>Environment ready. Start a session here, or run <code>grok</code> in any project.</>
             : <>Need the full terminal report? Run <code>grok-ui doctor</code>.</>}
         </span>
         <button className="text-button" onClick={onRefresh}>
@@ -1020,7 +1286,7 @@ function Overview({
   return (
     <>
       <PageIntro
-        index="04"
+        index="05"
         eyebrow="Local intelligence"
         title={<>Your Grok,<br /><em>at a glance.</em></>}
         description="A read-only flight recorder for every local Grok Build session, tool run, model, workspace, and durable memory."
@@ -1369,7 +1635,7 @@ function SessionsView({
   return (
     <>
       <PageIntro
-        index="05"
+        index="06"
         eyebrow="Conversation archive"
         title={<>Every run.<br /><em>Nothing buried.</em></>}
         description="Search local session metadata without sending conversation content anywhere."
@@ -1411,7 +1677,7 @@ function SessionsView({
           icon={archiveScope === 'archived' ? Archive : Search}
           title={archiveScope === 'archived' ? 'No archived sessions' : 'No matching sessions'}
           copy={archiveScope === 'archived'
-            ? 'Archive a session from its workbench and it will appear here.'
+            ? 'Archive a session from its Session Console and it will appear here.'
             : 'Try a broader title, workspace, model, or agent name.'}
         />}
       </section>
@@ -1429,7 +1695,7 @@ function ActivityView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="06"
+        index="07"
         eyebrow="Operational telemetry"
         title={<>The shape of<br /><em>the work.</em></>}
         description="A two-week read on agent velocity, tool intensity, code movement, and friction."
@@ -1523,7 +1789,7 @@ function LibraryView({
   return (
     <>
       <PageIntro
-        index="07"
+        index="10"
         eyebrow="Capability library"
         title={<>What Grok can<br /><em>reach for.</em></>}
         description="The local skills, agent profiles, and marketplace packages shaping every run."
@@ -1562,7 +1828,7 @@ function MemoryView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="08"
+        index="11"
         eyebrow="Durable recall"
         title={<>Memory without<br /><em>the mystery.</em></>}
         description="A privacy-conscious inventory of Grok’s durable Markdown memory. Content stays on disk and is not rendered here."
@@ -1611,7 +1877,7 @@ function PageIntro({
 }) {
   return (
     <header className="page-intro">
-      <div className="intro-index">{index} / 09</div>
+      <div className="intro-index">{index} / 12</div>
       <div>
         <div className="kicker">{eyebrow}</div>
         <h1>{title}</h1>
@@ -1646,12 +1912,28 @@ function CommandPalette({
 }) {
   const privacy = usePrivacy()
   const [value, setValue] = useState('')
+  const [selected, setSelected] = useState(0)
   const normalized = value.toLowerCase()
   const navResults = NAV_ITEMS.filter((item) => item.label.toLowerCase().includes(normalized))
   const sessionResults = (data?.sessions || []).filter((session) =>
     !session.archived
     && [session.title, session.workspace, session.model].some((item) => item.toLowerCase().includes(normalized)),
   ).slice(0, 5)
+  const results = [
+    ...navResults.map((item) => ({ kind: 'nav' as const, item })),
+    ...sessionResults.map((session) => ({ kind: 'session' as const, session })),
+  ]
+
+  useEffect(() => {
+    setSelected(0)
+  }, [value])
+
+  const openResult = (index = selected) => {
+    const result = results[index]
+    if (!result) return
+    if (result.kind === 'nav') onNavigate(result.item.id)
+    else onSession(result.session)
+  }
 
   return (
     <div className="palette-layer" role="dialog" aria-modal="true" aria-label="Command palette">
@@ -1659,31 +1941,72 @@ function CommandPalette({
       <div className="command-palette">
         <label>
           <Command size={18} />
-          <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} placeholder="Jump to a view or local session…" />
+          <input
+            autoFocus
+            value={value}
+            aria-autocomplete="list"
+            aria-controls="command-palette-results"
+            aria-activedescendant={results[selected] ? `palette-result-${selected}` : undefined}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                setSelected((index) => (index + 1) % Math.max(results.length, 1))
+              }
+              if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                setSelected((index) => (index - 1 + results.length) % Math.max(results.length, 1))
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                openResult()
+              }
+            }}
+            placeholder="Jump to a view or local session…"
+          />
           <kbd>ESC</kbd>
         </label>
-        <div className="palette-results">
+        <div className="palette-results" id="command-palette-results" role="listbox">
           {navResults.length > 0 && <div className="palette-label">Views</div>}
-          {navResults.map((item) => {
+          {navResults.map((item, index) => {
             const Icon = item.icon
             return (
-              <button key={item.id} onClick={() => onNavigate(item.id)}>
+              <button
+                id={`palette-result-${index}`}
+                key={item.id}
+                role="option"
+                aria-selected={selected === index}
+                className={selected === index ? 'is-selected' : ''}
+                onMouseEnter={() => setSelected(index)}
+                onClick={() => openResult(index)}
+              >
                 <Icon size={16} /><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span><kbd>{item.shortcut}</kbd>
               </button>
             )
           })}
           {sessionResults.length > 0 && <div className="palette-label">Recent sessions</div>}
-          {sessionResults.map((session) => (
-            <button key={session.id} onClick={() => onSession(session)}>
-              <TerminalSquare size={16} />
-              <span>
-                <strong>{privacy.sessionTitle(session.title, session.id)}</strong>
-                <small>{privacy.workspace(session.cwd)} · {session.model}</small>
-              </span>
-              <ChevronRight size={15} />
-            </button>
-          ))}
-          {!navResults.length && !sessionResults.length && <EmptyInline>No matching destination.</EmptyInline>}
+          {sessionResults.map((session, sessionIndex) => {
+            const index = navResults.length + sessionIndex
+            return (
+              <button
+                id={`palette-result-${index}`}
+                key={session.id}
+                role="option"
+                aria-selected={selected === index}
+                className={selected === index ? 'is-selected' : ''}
+                onMouseEnter={() => setSelected(index)}
+                onClick={() => openResult(index)}
+              >
+                <TerminalSquare size={16} />
+                <span>
+                  <strong>{privacy.sessionTitle(session.title, session.id)}</strong>
+                  <small>{privacy.workspace(session.cwd)} · {session.model}</small>
+                </span>
+                <ChevronRight size={15} />
+              </button>
+            )
+          })}
+          {!results.length && <EmptyInline>No matching destination.</EmptyInline>}
         </div>
         <footer><span>↑↓ Navigate</span><span>↵ Open</span><span>Local metadata only</span></footer>
       </div>
@@ -1691,14 +2014,77 @@ function CommandPalette({
   )
 }
 
-function MobileNav({ active, onNavigate }: { active: ViewId; onNavigate: (view: ViewId) => void }) {
+function MobileNav({
+  active,
+  attention,
+  onNavigate,
+  onMore,
+  suspended,
+}: {
+  active: ViewId
+  attention: AttentionState
+  onNavigate: (view: ViewId) => void
+  onMore: () => void
+  suspended: boolean
+}) {
+  const primaryItems = NAV_ITEMS.filter((item) => MOBILE_NAV_IDS.includes(item.id))
+  const moreActive = !MOBILE_NAV_IDS.includes(active)
   return (
-    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-      {NAV_ITEMS.filter((item) => item.id !== 'themes').map((item) => {
+    <nav
+      className={`mobile-bottom-nav ${suspended ? 'is-suspended' : ''}`}
+      aria-label="Mobile navigation"
+      aria-hidden={suspended}
+      inert={suspended}
+    >
+      {primaryItems.map((item) => {
         const Icon = item.icon
-        return <button key={item.id} className={active === item.id ? 'is-active' : ''} onClick={() => onNavigate(item.id)}><Icon size={18} /><span>{item.label}</span></button>
+        const badge = navBadgeCount(item.id, attention)
+        return (
+          <button key={item.id} className={active === item.id ? 'is-active' : ''} onClick={() => onNavigate(item.id)}>
+            <span className="mobile-nav-icon">
+              <Icon size={18} />
+              {badge > 0 && <i className="nav-badge-dot" aria-hidden="true" />}
+            </span>
+            <span>{item.label}</span>
+          </button>
+        )
       })}
+      <button
+        className={moreActive ? 'is-active' : ''}
+        onClick={onMore}
+        aria-controls="primary-navigation"
+        aria-expanded={suspended}
+      >
+        <Menu size={18} />
+        <span>More</span>
+      </button>
     </nav>
+  )
+}
+
+function NeedsYouBar({
+  attention,
+  privacyMode,
+  onOpen,
+}: {
+  attention: AttentionState
+  privacyMode: boolean
+  onOpen: () => void
+}) {
+  if (!attention.primary) return null
+  const count = attention.permissionCount + attention.liveCount
+  const title = privacyMode
+    ? `${count} session${count === 1 ? '' : 's'} waiting for attention.`
+    : attention.primary.title
+  return (
+    <button className="needs-you-bar" type="button" onClick={onOpen}>
+      <span className="needs-you-pulse" aria-hidden="true" />
+      <span>
+        <small>Needs you</small>
+        <strong>{title}</strong>
+      </span>
+      <em>{attention.primary.kind === 'permission' ? 'Review approval' : 'Open session'} <ArrowRight size={14} /></em>
+    </button>
   )
 }
 

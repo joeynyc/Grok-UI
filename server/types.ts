@@ -131,6 +131,7 @@ export interface LiveAgent {
   contextSize: number
   costAmount: number
   costCurrency: string
+  costTelemetryAvailable: boolean
   feed: LiveFeedItem[]
 }
 
@@ -145,6 +146,66 @@ export interface LiveSnapshot {
 
 export type ControlSessionState = 'starting' | 'idle' | 'working' | 'attention' | 'stopping' | 'cancelled' | 'failed'
 export type ControlCancellationStatus = 'none' | 'requested' | 'confirmed' | 'timed_out' | 'failed'
+export type WorkflowRunStatus =
+  | 'running'
+  | 'paused'
+  | 'failed'
+  | 'completed'
+  | 'cancelled'
+  | 'budget-limited'
+  | 'interrupted'
+  | 'unknown'
+export type WorkflowControlAction = 'pause' | 'resume' | 'stop'
+
+export interface WorkflowPhase {
+  id: string
+  label: string
+  status: string
+}
+
+export interface WorkflowAgent {
+  id: string
+  label: string
+  status: string
+  detail: string
+  phase: string
+  model: string
+  tokensUsed: number
+  durationMs: number
+  tokenTelemetryAvailable: boolean
+}
+
+export interface WorkflowRun {
+  id: string
+  controlHandle: string
+  displayName: string
+  sessionId: string
+  objective: string
+  foreground: boolean
+  status: WorkflowRunStatus
+  phases: WorkflowPhase[]
+  currentPhase: string
+  agentBudget: number
+  agentsUsed: number
+  agentsReserved: number
+  agentsRemaining: number
+  usageIncomplete: boolean
+  activeAgents: number
+  currentAgentLabel: string
+  agents: WorkflowAgent[]
+  totalTokens: number
+  tokenTelemetryAvailable: boolean
+  elapsedMs: number
+  lastEvent: string
+  lastEventDetail: string
+  lastEventAt: string
+  pauseMessage: string
+  resultSummary: string
+  updatedAt: string
+  canPause: boolean
+  canResume: boolean
+  canStop: boolean
+}
 
 export interface ControlSession {
   id: string
@@ -163,9 +224,12 @@ export interface ControlSession {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  tokenTelemetryAvailable: boolean
   costAmount: number
   costCurrency: string
+  costTelemetryAvailable: boolean
   feed: LiveFeedItem[]
+  workflows: WorkflowRun[]
 }
 
 export interface ControlPermissionOption {
@@ -187,11 +251,16 @@ export interface ControlPermission {
 export interface ControlSnapshot {
   generatedAt: string
   connected: boolean
+  processId: number
   starting: boolean
+  reconnecting: boolean
+  reconnectAttempt: number
+  lastDisconnectedAt: string
   agentName: string
   agentVersion: string
   error: string
   sessions: ControlSession[]
+  workflows: WorkflowRun[]
   permissions: ControlPermission[]
 }
 
@@ -238,6 +307,369 @@ export interface SessionWorkbenchData {
   control: ControlSession | null
   permissions: ControlPermission[]
   managed: boolean
+}
+
+export type RuntimeProcessState = 'running' | 'sleeping' | 'stopped' | 'zombie' | 'unknown'
+export type RuntimeBindScope = 'loopback' | 'all' | 'lan' | 'unknown'
+export type RuntimeServiceKind =
+  | 'database'
+  | 'cache'
+  | 'queue'
+  | 'emulator'
+  | 'dev-server'
+  | 'web'
+  | 'other'
+export type RuntimeTestStatus = 'running' | 'passed' | 'failed' | 'interrupted' | 'unknown'
+export type ExternalCallCategory = 'network' | 'browser' | 'mcp' | 'cloud' | 'vcs'
+
+export interface RuntimeRoot {
+  pid: number
+  managed: boolean
+  sessionIds: string[]
+  workspaces: string[]
+}
+
+export interface RuntimeProcess {
+  pid: number
+  parentPid: number
+  rootPid: number
+  depth: number
+  name: string
+  state: RuntimeProcessState
+  elapsed: string
+  sessionIds: string[]
+  workspaces: string[]
+  ports: number[]
+}
+
+export interface RuntimePort {
+  pid: number
+  port: number
+  protocol: 'tcp'
+  bind: RuntimeBindScope
+}
+
+export interface RuntimeService {
+  id: string
+  pid: number
+  name: string
+  kind: RuntimeServiceKind
+  port: number
+  bind: RuntimeBindScope
+  status: 'listening' | 'running'
+}
+
+export interface RuntimeTestRun {
+  id: string
+  sessionId: string
+  title: string
+  framework: string
+  status: RuntimeTestStatus
+  startedAt: string
+  updatedAt: string
+  incomplete: boolean
+}
+
+export interface ExternalToolCall {
+  id: string
+  sessionId: string
+  title: string
+  category: ExternalCallCategory
+  status: string
+  updatedAt: string
+}
+
+export interface RuntimeSnapshot {
+  generatedAt: string
+  available: boolean
+  partial: boolean
+  error: string
+  roots: RuntimeRoot[]
+  processes: RuntimeProcess[]
+  ports: RuntimePort[]
+  services: RuntimeService[]
+  tests: RuntimeTestRun[]
+  externalCalls: ExternalToolCall[]
+}
+
+export type UsageSource = 'grok-reported' | 'derived' | 'incomplete' | 'unavailable'
+export type UsageEntryKind = 'managed-session' | 'cli-session' | 'workflow-agent'
+export type UsageGroupDimension = 'project' | 'model' | 'session' | 'agent'
+export type UsagePeriod = '24h' | '7d' | '30d' | '90d' | 'all'
+export type UsageScope = 'sessions' | 'workflow-agents' | 'all'
+
+export interface UsageMetric {
+  value: number | null
+  source: UsageSource
+}
+
+export interface UsageCostMetric extends UsageMetric {
+  currency: string
+}
+
+export interface UsageLedgerEntry {
+  id: string
+  kind: UsageEntryKind
+  sessionId: string
+  sessionTitle: string
+  workflowId: string
+  project: string
+  cwd: string
+  model: string
+  agent: string
+  startedAt: string
+  updatedAt: string
+  inputTokens: UsageMetric
+  outputTokens: UsageMetric
+  totalTokens: UsageMetric
+  cost: UsageCostMetric
+}
+
+export interface UsageReportGroup {
+  key: string
+  label: string
+  entries: number
+  sessions: number
+  inputTokens: UsageMetric
+  outputTokens: UsageMetric
+  totalTokens: UsageMetric
+  costs: UsageCostMetric[]
+  updatedAt: string
+}
+
+export interface UsageReport {
+  generatedAt: string
+  period: UsagePeriod
+  scope: UsageScope
+  from: string
+  to: string
+  groupBy: UsageGroupDimension
+  entries: UsageLedgerEntry[]
+  totals: UsageReportGroup
+  groups: UsageReportGroup[]
+  coverage: Record<UsageSource, number>
+}
+
+export type UsageBudgetDimension = 'global' | UsageGroupDimension
+export type UsageBudgetMetric = 'tokens' | 'cost'
+
+export interface UsageBudget {
+  id: string
+  dimension: UsageBudgetDimension
+  key: string
+  label: string
+  metric: UsageBudgetMetric
+  limit: number
+  period: UsagePeriod
+  currency: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UsageBudgetAlert {
+  id: string
+  budgetId: string
+  threshold: number
+  observed: number
+  limit: number
+  source: UsageSource
+  periodFrom: string
+  createdAt: string
+  acknowledgedAt: string
+}
+
+export interface UsageBudgetStatus {
+  budget: UsageBudget
+  observed: UsageMetric
+  percent: number | null
+  alertLevel: 'none' | 'warning' | 'exceeded' | 'unavailable'
+  periodFrom: string
+  periodTo: string
+}
+
+export interface UsageBudgetSnapshot {
+  generatedAt: string
+  statuses: UsageBudgetStatus[]
+  alerts: UsageBudgetAlert[]
+}
+
+export type FleetTransportKind = 'direct' | 'tailscale' | 'ssh'
+export type FleetHostStatus =
+  | 'connecting'
+  | 'healthy'
+  | 'degraded'
+  | 'stale'
+  | 'offline'
+  | 'incompatible'
+  | 'unauthorized'
+  | 'unavailable'
+export type FleetFreshness = 'unknown' | 'fresh' | 'aging' | 'stale' | 'expired'
+export type AgentCapability =
+  | 'sessions.list'
+  | 'sessions.detail'
+  | 'workflows.list'
+  | 'runtime.snapshot'
+  | 'usage.report'
+  | 'remote.sessions'
+  | 'remote.sessions.create'
+  | 'remote.sessions.prompt'
+  | 'remote.sessions.interrupt'
+  | 'remote.permissions.resolve'
+
+export interface FleetHostConfig {
+  id: string
+  label: string
+  transport: FleetTransportKind
+  baseUrl: string
+  token: string
+  controlToken: string
+  controlEnabled: boolean
+  sshTarget: string
+  sshPort: number
+  localPort: number
+  remotePort: number
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FleetHostPublicConfig extends Omit<FleetHostConfig, 'token' | 'controlToken'> {
+  hasToken: boolean
+  hasControlToken: boolean
+}
+
+export interface AgentHostIdentity {
+  id: string
+  label: string
+  hostname: string
+  platform: string
+  arch: string
+}
+
+export interface AgentHello {
+  protocolVersion: number
+  protocolMin: number
+  protocolMax: number
+  generatedAt: string
+  host: AgentHostIdentity
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+}
+
+export interface AgentSnapshot {
+  protocolVersion: number
+  generatedAt: string
+  host: AgentHostIdentity
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+  managedSessionIds: string[]
+  health: {
+    status: 'healthy' | 'degraded'
+    detail: string
+  }
+  sessions: SessionRow[]
+  workflows: WorkflowRun[]
+  runtime: RuntimeSnapshot | null
+  usage: UsageReport | null
+  sections: {
+    sessions: 'available' | 'partial' | 'unavailable'
+    workflows: 'available' | 'partial' | 'unavailable'
+    runtime: 'available' | 'partial' | 'unavailable'
+    usage: 'available' | 'partial' | 'unavailable'
+  }
+  truncated: {
+    sessions: boolean
+    workflows: boolean
+    usageEntries: boolean
+  }
+}
+
+export interface AgentSessionDetail {
+  protocolVersion: number
+  generatedAt: string
+  hostId: string
+  session: SessionRow
+  transcript: LiveFeedItem[]
+  live: LiveAgent | null
+  control: Omit<ControlSession, 'workflows'> | null
+  workflows: WorkflowRun[]
+  managed: boolean
+}
+
+export type RemoteCommandKind =
+  | 'session.create'
+  | 'session.prompt'
+  | 'session.interrupt'
+  | 'permission.resolve'
+
+export type RemoteCommandStatus = 'accepted' | 'completed' | 'failed' | 'unknown'
+
+export interface RemoteCommandReceipt {
+  commandId: string
+  kind: RemoteCommandKind
+  status: RemoteCommandStatus
+  createdAt: string
+  updatedAt: string
+  sessionId: string
+  error: string
+}
+
+export interface RemoteSessionSnapshot {
+  protocolVersion: number
+  generatedAt: string
+  revision: string
+  hostId: string
+  session: SessionRow
+  transcript: LiveFeedItem[]
+  live: LiveAgent | null
+  control: Omit<ControlSession, 'workflows'> | null
+  workflows: WorkflowRun[]
+  permissions: ControlPermission[]
+  managed: boolean
+}
+
+export interface FleetHostView {
+  id: string
+  label: string
+  transport: FleetTransportKind
+  status: FleetHostStatus
+  statusDetail: string
+  freshness: FleetFreshness
+  latencyMs: number | null
+  lastSeen: string
+  lastAttemptAt: string
+  consecutiveFailures: number
+  host: AgentHostIdentity | null
+  grokUiVersion: string
+  agentVersion: string
+  grokVersion: string
+  capabilities: AgentCapability[]
+  snapshot: AgentSnapshot | null
+  config: FleetHostPublicConfig
+}
+
+export interface FleetSnapshot {
+  generatedAt: string
+  protocolVersion: number
+  registryError: string
+  pollIntervalMs: number
+  staleAfterMs: number
+  offlineAfterMs: number
+  hosts: FleetHostView[]
+  totals: {
+    hosts: number
+    healthy: number
+    degraded: number
+    stale: number
+    offline: number
+    sessions: number
+    workflows: number
+  }
 }
 
 export type PreviewStatus = 'idle' | 'starting' | 'running' | 'failed' | 'stopped'

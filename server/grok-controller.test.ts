@@ -39,7 +39,8 @@ describe('GrokController cancellation', () => {
       cwd: workspace,
       prompt: 'Run the ignored cancellation verification',
     })
-    await waitFor(() => controller.snapshot().sessions[0]?.state === 'working')
+    await waitFor(() => controller.snapshot().sessions[0]?.feed.some((item) =>
+      item.title === 'Long-running cancellation fixture') === true, 5_000)
 
     await controller.cancelSession(created.id)
     expect(controller.snapshot().sessions[0]).toMatchObject({
@@ -54,5 +55,89 @@ describe('GrokController cancellation', () => {
       cancellationStatus: 'timed_out',
     })
     expect(controller.snapshot().sessions[0].error).toContain('did not confirm')
+  })
+})
+
+describe('GrokController recovery', () => {
+  it('reconnects after the ACP child exits and reloads the interrupted session', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-recovery-'))
+    cleanup.push(workspace)
+    const controller = new GrokController(undefined, 12_000, 20)
+    controllers.push(controller)
+
+    const created = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Crash control process fixture',
+    })
+    await waitFor(() => Boolean(controller.snapshot().lastDisconnectedAt), 5_000)
+    await waitFor(() => controller.snapshot().connected, 5_000)
+
+    expect(controller.snapshot()).toMatchObject({
+      connected: true,
+      reconnecting: false,
+      reconnectAttempt: 0,
+    })
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      id: created.id,
+      state: 'failed',
+      stopReason: 'control_disconnected',
+    })
+    expect(controller.snapshot().sessions[0].error).toContain('Simulated ACP child crash')
+
+    await controller.promptSession({
+      sessionId: created.id,
+      cwd: workspace,
+      prompt: 'Verify recovered control session',
+    })
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle', 5_000)
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      id: created.id,
+      state: 'idle',
+      error: '',
+    })
+  }, 15_000)
+})
+
+describe('GrokController workflows', () => {
+  it('collects cross-session telemetry and resumes a failed run through Grok', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-workflow-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const created = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Start workflow fixture',
+    })
+    await waitFor(() => controller.snapshot().workflows[0]?.status === 'failed', 5_000)
+
+    expect(controller.snapshot().workflows[0]).toMatchObject({
+      id: 'workflow-run-1',
+      sessionId: created.id,
+      displayName: 'release-check',
+      status: 'failed',
+      currentPhase: 'verify',
+      agentBudget: 8,
+      agentsUsed: 4,
+      totalTokens: 6_400,
+      tokenTelemetryAvailable: true,
+      elapsedMs: 58_000,
+      canResume: true,
+    })
+
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle', 5_000)
+    await controller.controlWorkflow(created.id, 'workflow-run-1', 'resume')
+    await waitFor(() => controller.snapshot().workflows[0]?.status === 'completed', 5_000)
+
+    expect(controller.snapshot().workflows[0]).toMatchObject({
+      status: 'completed',
+      resultSummary: 'Release verified and ready to ship.',
+      agentsUsed: 5,
+      totalTokens: 9_100,
+      canResume: false,
+    })
+    expect(controller.snapshot().sessions[0]?.lastPrompt).toBe('/workflow resume release-check')
   })
 })

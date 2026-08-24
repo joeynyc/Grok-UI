@@ -2,17 +2,168 @@
 
 ## Unreleased
 
-- Added session-scoped web app previews to the Session Workbench.
-- Added framework-aware `dev` and `start` script detection for Vite, Astro,
-  SvelteKit, Next.js, and environment-driven development servers.
-- Added explicit preview start, stop, reload, external-open, and responsive
-  desktop, tablet, and mobile controls.
-- Added a loopback-only preview supervisor with bounded logs, shell-free process
-  spawning, serialized start/stop, SIGTERM then SIGKILL termination, and
-  browser-level lifecycle coverage.
-- Isolated preview origins on `preview.localhost` behind a cookie-stripping
+- Isolated session previews on `preview.localhost` behind a cookie-stripping
   proxy so dashboard session cookies are not sent to generated applications.
+- Serialized preview start and stop, then terminate with SIGTERM followed by
+  SIGKILL so hung development servers do not linger.
 - Labeled generic `HOST`/`PORT` preview recipes as best-effort binds.
+- Kept preview failures inside the Preview tab instead of replacing the session
+  console error banner.
+- Grouped the primary nav into Work, Look back, and System so the twelve
+  destinations stay available without competing as one list.
+- Added a first-run and idle-state Start a session here action that opens
+  Control without leaving the dashboard.
+- Added a global Needs you bar and nav badges for pending approvals and live
+  attention.
+- Persisted the active view and open session in the URL hash so refresh keeps
+  place.
+- Made the command palette honor arrow keys and Enter.
+
+## 0.11.0 — 2026-07-30
+
+- Added an explicitly enabled Remote Session Console that lets a user start a
+  managed Grok session on a trusted host, receive live structured updates, send
+  natural-language follow-ups, resolve Grok-advertised permissions, and
+  interrupt an active turn.
+- Kept the v0.10 monitoring plane read-only and added a separate per-host
+  control credential, exact control-route allowlist, negotiated capabilities,
+  and healthy/fresh host gate.
+- Added durable idempotent command delivery with payload fingerprints,
+  bounded expiry, concurrent retry coalescing, unknown-after-restart
+  reconciliation, non-evicting active replay protection, sanitized failures,
+  bounded audit evidence, atomic persistence, and user-only file permissions.
+- Restricted remote Start to workspaces already observed by the host and kept
+  existing CLI-observed sessions read-only. Credentials, prompts, raw provider
+  errors, arbitrary shell execution, arbitrary fetches, and raw file mutation
+  stay outside the control protocol and audit record.
+- Added server, connector, registry, monitor, protocol, browser-parser, and
+  production end-to-end coverage for authentication, capability, freshness,
+  duplicate delivery, live chat, permissions, and interruption.
+- Added session-scoped web app previews to the local Session Console, including
+  framework-aware command detection, explicit start and stop controls, bounded
+  process logs, and desktop, tablet, and mobile preview widths.
+- Added the Minimal Calm theme with a neutral light palette and restrained
+  decorative motion across the complete Runs, Usage, Fleet, and session UI.
+- Optimized the complete remote-control journey for phones, including the
+  navigation rail, host setup, session controls, permission dialogs, safe-area
+  spacing, focus restoration, and keyboard-only dialog containment.
+- Hardened the release candidate against duplicate cross-process delivery,
+  lost acknowledgements, host restarts, expired and malformed command IDs,
+  stale permission state, cross-host receipt substitution, traversal payloads,
+  oversized requests, and out-of-order refresh/stream races.
+
+## 0.10.0 — 2026-07-28
+
+- Added a lightweight, bearer-authenticated host agent that reuses the existing
+  session, workflow, runtime, and usage projections through a versioned
+  read-only protocol.
+- Added an atomic, private `fleet.json` registry for up to 32 explicitly trusted
+  hosts, separate from existing session and usage state.
+- Added managed SSH loopback forwarding with fixed argument-separated options,
+  constrained Tailscale endpoints, and an advanced loopback-only direct
+  transport.
+- Added bounded multi-host polling with a 5-second interval, 3.5-second request
+  timeout, global four-read concurrency cap, 2 MiB per-agent and 4 MiB central
+  aggregate limits, manual redirect rejection, and exponential failure backoff.
+- Added explicit connecting, healthy, degraded, stale, offline, incompatible,
+  unauthorized, and unavailable host behavior with latency, last-seen, and
+  freshness reporting.
+- Added the Fleet view for read-only remote sessions, workflow runs, runtime
+  state, and provenance-aware usage, with host-scoped identifiers and Privacy
+  Mode aliases.
+- Removed remote mutation capability from every host-agent projection:
+  workflow controls are forced off, workflow control handles and managed-session
+  last-prompt fields are omitted, and the agent rejects methods other than
+  `GET` and `HEAD`.
+- Expanded the release gate to run the production dependency audit and require
+  current multi-host integration, browser, 75-second soak, packed-install,
+  privacy, and security evidence.
+- Hardened the release candidate after independent architecture review:
+  registry writes are transactional and recover after failure, standalone
+  usage includes current observers without becoming a second state writer,
+  explicit refresh waits for in-flight polling, unchanged fleet frames are
+  suppressed, SSH waits for forwarding readiness, and remote detail parsing is
+  bounded in both server and browser.
+- Invalidated old in-flight observations when connection settings change,
+  labeled retained snapshots as historical outside live-compatible states, and
+  surfaced preserved registry-load failures directly in the Fleet experience.
+- Split the Fleet experience into focused status, editor, selector, telemetry,
+  and stylesheet modules with an agent-facing ownership and verification guide.
+
+## 0.9.0 — 2026-07-26
+
+- Started the v0.9 Runtime Intelligence milestone with a persistent,
+  provenance-aware usage ledger built on the existing session and workflow
+  token telemetry.
+- Added time-windowed usage reporting by project, model, session, and agent,
+  with separate session and workflow-agent scopes to prevent silent double
+  counting.
+- Added explicit Grok-reported, derived, incomplete, and unavailable labels,
+  including a guard that never treats live context occupancy as cumulative
+  token usage.
+- Added a privacy-aware Usage view, authenticated usage API, atomic v1-to-v2
+  state migration, and coverage for persistence and mixed telemetry.
+- Added bounded process-tree and listening-port inspection for known Grok
+  process roots, with database, cache, queue, emulator, and development-service
+  classification that never probes arbitrary endpoints.
+- Added structured test-status and external tool-call panels using existing
+  safe telemetry titles, including incomplete interruption state after a
+  session or event-stream disconnect.
+- Added optional local budgets for global, project, model, session, and agent
+  scopes; deduplicated 80% and 100% alerts; and atomic v3 state migration.
+- Added bounded JSON/CSV usage exports with Privacy Mode redaction applied by
+  the authenticated server before download.
+
+## 0.8.2 — 2026-07-26
+
+- Renamed the session “Workbench” entry points to “Open Session” and labeled
+  the focused agent view “Session Console,” with a concise explanation of its
+  live chat, activity, and change-review capabilities.
+- Added automatic ACP control-channel recovery with exponential backoff,
+  interrupted-session diagnostics, and safe session reload after reconnection.
+- Added forced browser-stream and ACP-child recovery coverage.
+- Made local browser tests build production assets before launching, preventing
+  stale ignored output from masking source regressions.
+- Added a 75-second managed-session soak to the tagged release gate.
+- Added npm trusted-publishing support, manual publication for an existing tag,
+  and a release guard that rejects tag/package version mismatches.
+
+## 0.8.1 — 2026-07-25
+
+- Replaced scattered 5–10px dashboard typography with a consistent readable
+  scale for micro-labels, metadata, body copy, and controls.
+- Improved supporting-text contrast in both Operator and Event Horizon themes
+  while preserving intentionally dim disabled states.
+- Reworked the 390px bottom navigation into a readable horizontal command rail
+  instead of compressing nine labels into colliding fixed columns.
+- Added browser coverage that audits visible supporting text across all ten
+  dashboard sections and the mobile viewport.
+
+## 0.8.0 — 2026-07-25
+
+- Added real per-agent workflow token usage from Grok Build’s structured
+  `workflow_updated` telemetry, with an aggregate total for each run.
+- Added agent model, phase, duration, remaining capacity, and elapsed-time
+  signals without scraping terminal output.
+- Added searchable, paginated workflow rosters that stay responsive when Grok
+  scales a workflow toward its 1,024-agent ceiling.
+- Added explicit unavailable and incomplete-usage states so derived totals do
+  not imply precision Grok has not reported.
+- Expanded workflow parser, controller, and browser coverage for token
+  telemetry, partial updates, and large agent fields.
+
+## 0.7.0 — 2026-07-25
+
+- Added a cross-session Workflow Command Center powered by Grok Build workflow
+  telemetry.
+- Added live run status, objectives, phase progression, agent rosters, budget
+  usage, latest events, result summaries, and parent-workbench navigation.
+- Added run filters and safe Pause, Resume, and Stop controls, with failed-run
+  recovery enabled only when Grok reports a recoverable display handle.
+- Added persisted workflow snapshots with controls disabled after server
+  restarts, and extended Privacy Mode to workflow content.
+- Added controller, workflow-state, workbench, and browser coverage for live
+  workflow behavior and responsive dashboard presentation.
 
 ## 0.6.0 — 2026-07-25
 

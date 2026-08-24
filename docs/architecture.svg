@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
-  <title id="title">Grok UI local command architecture</title>
-  <desc id="desc">A browser connects to a local Express and SSE supervisor, which reads Grok state, controls a Grok ACP process, and watches Git workspaces.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Grok UI local-first command and read-only fleet architecture</title>
+  <desc id="desc">A browser connects to a local Express and SSE supervisor, which reads local Grok state, controls a local Grok ACP process, watches Git workspaces, and monitors authenticated remote host agents over SSH forwarding or Tailscale.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#07090d"/>
@@ -27,10 +27,10 @@
       .return{fill:none;stroke:#65cfff;stroke-width:1.5;stroke-dasharray:6 8}
     </style>
   </defs>
-  <rect width="1200" height="560" rx="22" fill="url(#bg)"/>
-  <path d="M40 42H1160M40 518H1160" stroke="#252832"/>
-  <text x="54" y="72" class="eyebrow">LOCAL COMMAND PATH / 01</text>
-  <text x="1146" y="72" text-anchor="end" class="copy">NO CLOUD DASHBOARD REQUIRED</text>
+  <rect width="1200" height="760" rx="22" fill="url(#bg)"/>
+  <path d="M40 42H1160M40 718H1160" stroke="#252832"/>
+  <text x="54" y="72" class="eyebrow">LOCAL COMMAND + FLEET MONITOR / 01</text>
+  <text x="1146" y="72" text-anchor="end" class="copy">LOCAL-FIRST · NO CLOUD DASHBOARD REQUIRED</text>
 
   <rect class="node" x="54" y="190" width="220" height="170" rx="8"/>
   <circle cx="86" cy="225" r="9" fill="#ff4a3d" filter="url(#glow)"/>
@@ -45,7 +45,7 @@
   <text x="408" y="230" class="label">EXPRESS + SSE</text>
   <text x="408" y="267" class="copy">Live process monitor</text>
   <text x="408" y="294" class="copy">ACP controller</text>
-  <text x="408" y="321" class="copy">Session projection</text>
+  <text x="408" y="321" class="copy">Session + fleet projection</text>
   <text x="408" y="348" class="copy">Workspace watcher</text>
   <circle cx="649" cy="277" r="34" fill="none" stroke="#ff4a3d" stroke-width="2"/>
   <circle cx="649" cy="277" r="17" fill="#ff4a3d" opacity=".18"/>
@@ -66,14 +66,23 @@
   <text x="832" y="421" class="label">GIT WORKSPACES</text>
   <text x="832" y="442" class="copy">status · branch · bounded diff</text>
 
+  <rect class="node" x="802" y="525" width="330" height="120" rx="8"/>
+  <text x="832" y="561" class="eyebrow">REMOTE READ-ONLY PLANE</text>
+  <text x="832" y="593" class="label">HOST AGENTS</text>
+  <text x="832" y="618" class="copy">identity · sessions · runs · runtime · usage</text>
+  <text x="832" y="638" class="copy">bearer auth · protocol v1 · bounded GET</text>
+
   <path class="edge" d="M274 262H372"/>
   <path class="return" d="M372 300H274"/>
   <path class="edge" d="M702 204C750 204 752 155 802 155"/>
   <path class="edge" d="M702 275H802"/>
   <path class="edge" d="M702 346C750 346 752 405 802 405"/>
+  <path class="edge" d="M650 412C650 544 742 585 802 585"/>
+  <path class="return" d="M802 608C720 608 682 559 682 412"/>
   <text x="314" y="244" class="copy">commands</text>
   <text x="302" y="324" class="copy">live events</text>
+  <text x="604" y="560" class="copy">SSH forward / Tailscale</text>
 
-  <text x="54" y="500" class="copy">LOOPBACK BY DEFAULT</text>
-  <text x="1146" y="500" text-anchor="end" class="copy">TOKEN REQUIRED BEYOND LOCALHOST</text>
+  <text x="54" y="700" class="copy">LOCAL ACP CONTROL STAYS ON THIS MACHINE</text>
+  <text x="1146" y="700" text-anchor="end" class="copy">REMOTE HOSTS ARE MONITOR-ONLY IN v0.10</text>
 </svg>

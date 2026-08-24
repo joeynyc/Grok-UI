@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PREVIEW_BIND_HOST, PREVIEW_PUBLIC_HOST, PreviewSupervisor, type PreviewSnapshot } from './preview-supervisor.js'
+import {
+  PREVIEW_BIND_HOST,
+  PREVIEW_PUBLIC_HOST,
+  PreviewSupervisor,
+  previewLoopbackUrl,
+  type PreviewSnapshot,
+} from './preview-supervisor.js'
 
 const directories: string[] = []
 const supervisors: PreviewSupervisor[] = []
@@ -43,6 +49,15 @@ function processAlive(pid: number): boolean {
   } catch {
     return false
   }
+}
+
+async function waitUntilGone(pid: number, timeoutMs = 1_500): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!processAlive(pid)) return
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  }
+  throw new Error(`Process ${pid} was still alive after ${timeoutMs}ms.`)
 }
 
 async function waitForPid(file: string): Promise<number> {
@@ -134,12 +149,12 @@ describe('PreviewSupervisor', () => {
     expect(starting.url).toBe(`http://${PREVIEW_PUBLIC_HOST}:${starting.port}`)
 
     const running = await waitFor(supervisor, 'preview-run', cwd, 'running')
-    expect(await (await fetch(running.url)).text()).toBe('preview-ready')
+    expect(await (await fetch(previewLoopbackUrl(running.port))).text()).toBe('preview-ready')
     expect(running.logs.join('\n')).toContain(`preview listening on ${PREVIEW_BIND_HOST}`)
 
     const stopped = await supervisor.stop('preview-run')
     expect(stopped.status).toBe('stopped')
-    await expect(fetch(running.url)).rejects.toThrow()
+    await expect(fetch(previewLoopbackUrl(running.port))).rejects.toThrow()
   })
 
   it('reaps a detached group after a readiness timeout', { timeout: 15_000 }, async () => {
@@ -157,7 +172,7 @@ describe('PreviewSupervisor', () => {
 
     const failed = await waitFor(supervisor, 'preview-timeout', cwd, 'failed')
     expect(failed.error).toContain('did not respond')
-    expect(processAlive(pid)).toBe(false)
+    await waitUntilGone(pid)
   })
 
   it('serializes overlapping starts onto one child', async () => {
@@ -177,7 +192,7 @@ describe('PreviewSupervisor', () => {
     expect(first.port).toBe(second.port)
     expect(first.url).toBe(second.url)
     const running = await waitFor(supervisor, 'preview-concurrent', cwd, 'running')
-    expect(await (await fetch(running.url)).text()).toBe('preview-ready')
+    expect(await (await fetch(previewLoopbackUrl(running.port))).text()).toBe('preview-ready')
   })
 
   it('restarts after a timeout without leaving the previous group alive', { timeout: 15_000 }, async () => {
@@ -192,14 +207,14 @@ describe('PreviewSupervisor', () => {
     await supervisor.start('preview-restart', cwd)
     const hungPid = await waitForPid(path.join(cwd, 'preview.pid'))
     await waitFor(supervisor, 'preview-restart', cwd, 'failed')
-    expect(processAlive(hungPid)).toBe(false)
+    await waitUntilGone(hungPid)
 
     await fs.writeFile(path.join(cwd, 'preview-server.mjs'), readyServer)
     await supervisor.start('preview-restart', cwd)
     const running = await waitFor(supervisor, 'preview-restart', cwd, 'running')
     const readyPid = await waitForPid(path.join(cwd, 'preview.pid'))
     expect(readyPid).not.toBe(hungPid)
-    expect(await (await fetch(running.url)).text()).toBe('preview-ready')
+    expect(await (await fetch(previewLoopbackUrl(running.port))).text()).toBe('preview-ready')
   })
 
   it('does not invent a command for workspaces without a supported script', async () => {
@@ -235,7 +250,7 @@ describe('PreviewSupervisor', () => {
 
     await supervisor.start('preview-cookie', cwd)
     const running = await waitFor(supervisor, 'preview-cookie', cwd, 'running')
-    const echoed = await (await fetch(running.url, {
+    const echoed = await (await fetch(previewLoopbackUrl(running.port), {
       headers: { Cookie: 'grok_ui_session=should-not-leak' },
     })).text()
     expect(echoed).toBe('')

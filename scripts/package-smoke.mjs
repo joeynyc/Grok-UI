@@ -61,7 +61,50 @@ async function waitForHealth(url, child, output) {
   throw new Error(`packaged server did not become healthy\n${output.join('')}`)
 }
 
+async function waitForAgent(url, token, child, output) {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`packaged host agent exited early\n${output.join('')}`)
+    try {
+      const response = await fetch(`${url}/agent/v1/hello`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) return response.json()
+    } catch {
+      // The packaged host agent is still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  throw new Error(`packaged host agent did not become healthy\n${output.join('')}`)
+}
+
+async function waitForFleetHost(url, label, expected = ['healthy', 'degraded']) {
+  const deadline = Date.now() + 15_000
+  let fleet
+  while (Date.now() < deadline) {
+    const response = await fetch(`${url}/api/fleet`)
+    if (response.ok) {
+      fleet = await response.json()
+      const host = fleet.hosts?.find((item) => item.label === label)
+      if (host && expected.includes(host.status)) return { fleet, host }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  throw new Error(`packaged fleet host did not reach ${expected.join(' or ')}: ${JSON.stringify(fleet)}`)
+}
+
+async function stopProcess(processHandle) {
+  if (!processHandle || processHandle.exitCode !== null) return
+  processHandle.kill('SIGTERM')
+  await Promise.race([
+    new Promise((resolve) => processHandle.once('exit', resolve)),
+    new Promise((resolve) => setTimeout(resolve, 3_000)),
+  ])
+  if (processHandle.exitCode === null) processHandle.kill('SIGKILL')
+}
+
 let child
+let agentChild
 try {
   await Promise.all([
     fs.mkdir(packDirectory),
@@ -162,6 +205,115 @@ else process.exit(1)
   ) {
     throw new Error(`unexpected setup diagnostics: ${JSON.stringify(setup)}`)
   }
+
+  const agentPort = await availablePort()
+  const agentToken = 'package-smoke-agent-token'
+  const agentOutput = []
+  agentChild = spawn(executable, [
+    'agent',
+    '--port', String(agentPort),
+    '--grok-home', grokHome,
+    '--state-dir', stateDirectory,
+  ], {
+    cwd: installDirectory,
+    env: {
+      ...process.env,
+      GROK_BIN: fakeGrok,
+      GROK_UI_AGENT_TOKEN: agentToken,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  agentChild.stdout.on('data', (chunk) => agentOutput.push(chunk.toString()))
+  agentChild.stderr.on('data', (chunk) => agentOutput.push(chunk.toString()))
+  const agentUrl = `http://127.0.0.1:${agentPort}`
+  const agentHello = await waitForAgent(agentUrl, agentToken, agentChild, agentOutput)
+  if (agentHello.protocolVersion !== 1 || agentHello.agentVersion !== manifest.version) {
+    throw new Error(`unexpected packaged host-agent hello: ${JSON.stringify(agentHello)}`)
+  }
+  if ((await fetch(`${agentUrl}/agent/v1/hello`)).status !== 401) {
+    throw new Error('packaged host agent allowed an unauthenticated request')
+  }
+  const agentSnapshotResponse = await fetch(`${agentUrl}/agent/v1/snapshot`, {
+    headers: { Authorization: `Bearer ${agentToken}` },
+  })
+  const agentSnapshot = await agentSnapshotResponse.json()
+  if (!agentSnapshotResponse.ok || agentSnapshot.protocolVersion !== 1) {
+    throw new Error(`packaged host agent did not return an authenticated snapshot: ${JSON.stringify(agentSnapshot)}`)
+  }
+  for (const method of ['POST', 'PATCH', 'DELETE']) {
+    if ((await fetch(`${agentUrl}/agent/v1/hello`, {
+      method,
+      headers: { Authorization: `Bearer ${agentToken}` },
+    })).status !== 405) {
+      throw new Error(`packaged host agent accepted the ${method} mutation`)
+    }
+  }
+
+  const fleetLabel = 'Packaged Agent Host'
+  const registrationResponse = await fetch(`http://127.0.0.1:${port}/api/fleet/hosts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      label: fleetLabel,
+      transport: 'direct',
+      baseUrl: agentUrl,
+      token: agentToken,
+    }),
+  })
+  const registration = await registrationResponse.json()
+  if (!registrationResponse.ok || registration.host?.hasToken !== true) {
+    throw new Error(`packaged server could not register the packaged agent: ${JSON.stringify(registration)}`)
+  }
+  const observedFleet = await waitForFleetHost(`http://127.0.0.1:${port}`, fleetLabel)
+  if (
+    JSON.stringify(observedFleet.fleet).includes(agentToken)
+    || observedFleet.host.snapshot?.protocolVersion !== 1
+  ) {
+    throw new Error('packaged central monitor exposed the host token or missed its agent snapshot')
+  }
+  const registryFile = path.join(stateDirectory, 'fleet.json')
+  const registryState = JSON.parse(await fs.readFile(registryFile, 'utf8'))
+  if (
+    registryState.hosts?.length !== 1
+    || registryState.hosts[0].label !== fleetLabel
+    || registryState.hosts[0].token !== agentToken
+  ) {
+    throw new Error(`packaged fleet registry did not persist the host atomically: ${JSON.stringify(registryState)}`)
+  }
+  if (process.platform !== 'win32') {
+    const [directoryStat, registryStat] = await Promise.all([
+      fs.stat(stateDirectory),
+      fs.stat(registryFile),
+    ])
+    if ((directoryStat.mode & 0o777) !== 0o700 || (registryStat.mode & 0o777) !== 0o600) {
+      throw new Error(`packaged fleet registry permissions are unsafe: ${JSON.stringify({
+        directory: (directoryStat.mode & 0o777).toString(8),
+        registry: (registryStat.mode & 0o777).toString(8),
+      })}`)
+    }
+  }
+
+  await stopProcess(child)
+  child = undefined
+  const restartOutput = []
+  child = spawn(executable, [
+    '--no-open',
+    '--port', String(port),
+    '--grok-home', grokHome,
+    '--state-dir', stateDirectory,
+  ], {
+    cwd: installDirectory,
+    env: { ...process.env, GROK_BIN: fakeGrok },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  child.stdout.on('data', (chunk) => restartOutput.push(chunk.toString()))
+  child.stderr.on('data', (chunk) => restartOutput.push(chunk.toString()))
+  await waitForHealth(healthUrl, child, restartOutput)
+  const restoredFleet = await waitForFleetHost(`http://127.0.0.1:${port}`, fleetLabel)
+  if (restoredFleet.host.id !== registration.host.id) {
+    throw new Error('packaged central monitor did not restore the persisted fleet registry after restart')
+  }
+
   await fs.writeFile(readyMarker, 'unauthenticated\n')
   const loggedOutResponse = await fetch(`http://127.0.0.1:${port}/api/setup?refresh=1`)
   const loggedOutSetup = await loggedOutResponse.json()
@@ -212,18 +364,15 @@ else process.exit(1)
   console.log(`✓ Remote safety       tokenless non-loopback bind rejected`)
   console.log(`✓ Production server   health check passed on ${process.platform}`)
   console.log(`✓ Browser security    CSP and frame protection headers confirmed`)
+  console.log(`✓ Read-only agent     authenticated GET protocol launched and rejected mutations`)
+  console.log(`✓ Fleet integration   packaged central monitor observed the packaged agent`)
+  console.log(`✓ Registry restart    private registry permissions and restart restore confirmed`)
   console.log(`✓ First-run failure   missing CLI returned actionable diagnostics`)
   console.log(`✓ First-run logged out installed CLI requested account authentication`)
   console.log(`✓ First-run ready     CLI and account checks transitioned to ready`)
   console.log(`✓ Live registration   new CLI session discovered by the packaged server`)
 } finally {
-  if (child && child.exitCode === null) {
-    child.kill('SIGTERM')
-    await Promise.race([
-      new Promise((resolve) => child.once('exit', resolve)),
-      new Promise((resolve) => setTimeout(resolve, 3_000)),
-    ])
-    if (child.exitCode === null) child.kill('SIGKILL')
-  }
+  await stopProcess(agentChild)
+  await stopProcess(child)
   await fs.rm(temporaryRoot, { recursive: true, force: true })
 }

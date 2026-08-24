@@ -28,6 +28,7 @@ const required = [
   'bin/grok-ui.mjs',
   'dist/index.html',
   'dist-server/index.js',
+  'dist-server/host-agent-entry.js',
   'package.json',
   'README.md',
   'LICENSE',
@@ -44,6 +45,10 @@ const forbidden = [
 const failures = []
 if (manifest.private === true) failures.push('package.json is still marked private')
 if (manifest.bin?.['grok-ui'] !== 'bin/grok-ui.mjs') failures.push('grok-ui executable is not configured')
+const releaseTag = process.env.RELEASE_TAG || ''
+if (releaseTag && releaseTag !== `v${manifest.version}`) {
+  failures.push(`release tag ${releaseTag} does not match package version v${manifest.version}`)
+}
 for (const entry of required) {
   if (!files.includes(entry)) failures.push(`package is missing ${entry}`)
 }
@@ -69,6 +74,7 @@ if (failures.length) {
 
 console.log('\nGROK UI / RELEASE CHECK\n')
 console.log(`✓ Executable          grok-ui → ${manifest.bin['grok-ui']}`)
+if (releaseTag) console.log(`✓ Release tag         ${releaseTag} matches package version`)
 console.log(`✓ Package contents    ${files.length} files, source and tests excluded`)
 console.log(`✓ Unpacked size       ${(report.unpackedSize / 1_000_000).toFixed(2)} MB`)
 console.log('✓ Privacy scan        no machine-specific identity in shipped text assets')

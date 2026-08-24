@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish to npm
+        required: true
+        type: string
 
 permissions:
   contents: write
+  id-token: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   release:
@@ -14,25 +24,35 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@11.15.0
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run verify
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run test:e2e
+      - name: Run control soak when available
+        run: npm run --if-present test:soak
       - run: npm run test:package
       - name: Pack release artifact
         run: |
           mkdir release
           npm pack --ignore-scripts --pack-destination release
+      - name: Publish npm package
+        run: npm publish ./release/*.tgz --access public
       - name: Publish GitHub release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}"
+          gh release create "${RELEASE_TAG}"
           release/*.tgz
           --verify-tag
           --generate-notes
-          --title "Grok UI ${GITHUB_REF_NAME}"
+          --title "Grok UI ${RELEASE_TAG}"

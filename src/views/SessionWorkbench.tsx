@@ -38,7 +38,9 @@ import {
   stopSessionPreview,
   updateSession,
 } from '../api'
+import { useModalFocus } from '../hooks/useModalFocus'
 import type {
+  ControlPermission,
   ControlSnapshot,
   LiveFeedItem,
   LiveSnapshot,
@@ -58,6 +60,7 @@ interface SessionWorkbenchProps {
   fallback: SessionRow | null
   live: LiveSnapshot | null
   control: ControlSnapshot | null
+  returnFocus?: HTMLElement | null
   onClose: () => void
   onUpdated: () => Promise<void>
 }
@@ -96,6 +99,7 @@ export function SessionWorkbench({
   fallback,
   live,
   control,
+  returnFocus,
   onClose,
   onUpdated,
 }: SessionWorkbenchProps) {
@@ -120,6 +124,11 @@ export function SessionWorkbench({
   const [previewRevision, setPreviewRevision] = useState(0)
   const [previewError, setPreviewError] = useState('')
   const feedRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useModalFocus<HTMLDivElement>(
+    onClose,
+    '[aria-label="Close session console panel"]',
+    returnFocus,
+  )
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true)
@@ -340,12 +349,19 @@ export function SessionWorkbench({
 
   return (
     <div
+      ref={dialogRef}
       className="workbench-layer"
       role="dialog"
       aria-modal="true"
-      aria-label={`Session workbench: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
+      aria-label={`Session console: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
+      tabIndex={-1}
     >
-      <button className="workbench-scrim" onClick={onClose} aria-label="Close session workbench" />
+      <button
+        className="workbench-scrim"
+        onClick={onClose}
+        aria-label="Close session console"
+        tabIndex={-1}
+      />
       <section className="session-workbench">
         <header className="workbench-head">
           <div className="workbench-identity">
@@ -361,25 +377,40 @@ export function SessionWorkbench({
             ) : (
               <div className="workbench-title">
                 <div>
-                  <span>SESSION / {privacy.identifier(sessionId)}</span>
+                  <span>SESSION CONSOLE / {privacy.identifier(sessionId)}</span>
                   <h1>{privacy.sessionTitle(session?.title || `Session ${sessionId.slice(0, 8)}`, sessionId)}</h1>
                 </div>
                 <button onClick={() => setRenaming(true)} aria-label="Rename session"><Pencil size={15} /></button>
               </div>
             )}
-            <p><FolderGit2 size={14} /> {session?.cwd ? privacy.path(session.cwd) : 'Resolving workspace…'}</p>
+            <div className="workbench-context">
+              <p>
+                <FolderGit2 size={14} />
+                <span>{session?.cwd ? privacy.path(session.cwd) : 'Resolving workspace…'}</span>
+              </p>
+              <span>Chat with this agent, review its activity, and inspect changes.</span>
+            </div>
           </div>
           <div className="workbench-head-actions">
-            <button className="workbench-archive" onClick={() => void toggleArchive()}>
+            <button
+              className="workbench-archive"
+              onClick={() => void toggleArchive()}
+              aria-label={session?.archived ? 'Restore session' : 'Archive session'}
+            >
               {session?.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-              {session?.archived ? 'Restore' : 'Archive'}
+              <span>{session?.archived ? 'Restore' : 'Archive'}</span>
             </button>
             {canCancel && (
-              <button className="workbench-stop" onClick={() => void cancel()}>
-                <CircleStop size={16} /> {data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}
+              <button
+                className="workbench-stop"
+                onClick={() => void cancel()}
+                aria-label={data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}
+              >
+                <CircleStop size={16} />
+                <span>{data?.control?.cancellationStatus === 'timed_out' ? 'Retry stop' : 'Stop turn'}</span>
               </button>
             )}
-            <button className="icon-button" onClick={onClose} aria-label="Close session workbench"><X size={19} /></button>
+            <button className="icon-button" onClick={onClose} aria-label="Close session console panel"><X size={19} /></button>
           </div>
         </header>
 
@@ -394,7 +425,7 @@ export function SessionWorkbench({
           <div><span>UPDATED</span><strong>{elapsed(session?.updatedAt || '')}</strong></div>
         </div>
 
-        <nav className="workbench-tabs" aria-label="Session workbench sections">
+        <nav className="workbench-tabs" aria-label="Session console sections">
           <button className={tab === 'timeline' ? 'is-active' : ''} onClick={() => setTab('timeline')}>
             <Radio size={15} /> Timeline <span>{transcript.length}</span>
           </button>
@@ -422,7 +453,7 @@ export function SessionWorkbench({
           {loading && !data ? (
             <div className="workbench-loading"><LoaderCircle size={25} className="is-spinning" /><span>Assembling session record…</span></div>
           ) : tab === 'timeline' ? (
-            <Timeline
+            <SessionTimeline
               items={transcript}
               permissions={data?.permissions || []}
               feedRef={feedRef}
@@ -612,14 +643,14 @@ function Preview({
   )
 }
 
-function Timeline({
+export function SessionTimeline({
   items,
   permissions,
   feedRef,
   onDecide,
 }: {
   items: LiveFeedItem[]
-  permissions: SessionWorkbenchData['permissions']
+  permissions: ControlPermission[]
   feedRef: React.RefObject<HTMLDivElement | null>
   onDecide: (permissionId: string, optionId?: string) => Promise<void>
 }) {
