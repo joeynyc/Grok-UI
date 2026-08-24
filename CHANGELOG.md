@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Isolated session previews on `preview.localhost` behind a cookie-stripping
+  proxy so dashboard session cookies are not sent to generated applications.
+- Serialized preview start and stop, then terminate with SIGTERM followed by
+  SIGKILL so hung development servers do not linger.
+- Labeled generic `HOST`/`PORT` preview recipes as best-effort binds.
+- Kept preview failures inside the Preview tab instead of replacing the session
+  console error banner.
 - Grouped the primary nav into Work, Look back, and System so the twelve
   destinations stay available without competing as one list.
 - Added a first-run and idle-state Start a session here action that opens

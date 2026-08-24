@@ -5650,10 +5650,25 @@ kbd {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: 55px minmax(0, 1fr) 132px;
+  grid-template-rows: auto minmax(0, 1fr) 132px;
   background:
     radial-gradient(circle at 50% 42%, rgba(217,255,67,.055), transparent 34%),
     #080906;
+}
+
+.preview-head {
+  min-width: 0;
+}
+
+.preview-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--coral);
+  background: var(--coral-soft);
+  border-bottom: 1px solid rgba(255,101,79,.25);
+  font-size: 11px;
 }
 
 .preview-toolbar {

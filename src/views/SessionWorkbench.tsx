@@ -122,6 +122,7 @@ export function SessionWorkbench({
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewViewport, setPreviewViewport] = useState<PreviewViewport>('desktop')
   const [previewRevision, setPreviewRevision] = useState(0)
+  const [previewError, setPreviewError] = useState('')
   const feedRef = useRef<HTMLDivElement>(null)
   const dialogRef = useModalFocus<HTMLDivElement>(
     onClose,
@@ -163,8 +164,11 @@ export function SessionWorkbench({
     if (!quiet) setPreviewLoading(true)
     try {
       setPreview(await getSessionPreview(sessionId))
+      if (!quiet) setPreviewError('')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to inspect the preview.')
+      if (!quiet) {
+        setPreviewError(requestError instanceof Error ? requestError.message : 'Unable to inspect the preview.')
+      }
     } finally {
       if (!quiet) setPreviewLoading(false)
     }
@@ -178,6 +182,7 @@ export function SessionWorkbench({
     setPreview(null)
     setPreviewViewport('desktop')
     setPreviewRevision(0)
+    setPreviewError('')
     setLoading(true)
     setError('')
     setMessage('')
@@ -284,13 +289,13 @@ export function SessionWorkbench({
 
   const startPreview = async () => {
     setPreviewBusy(true)
-    setError('')
+    setPreviewError('')
     setMessage('')
     try {
       setPreview(await startSessionPreview(sessionId))
       setMessage('Preview process launched on loopback.')
-    } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : 'Unable to start preview.')
+    } catch (startError) {
+      setPreviewError(startError instanceof Error ? startError.message : 'Unable to start preview.')
     } finally {
       setPreviewBusy(false)
     }
@@ -298,13 +303,13 @@ export function SessionWorkbench({
 
   const stopPreview = async () => {
     setPreviewBusy(true)
-    setError('')
+    setPreviewError('')
     setMessage('')
     try {
       setPreview(await stopSessionPreview(sessionId))
       setMessage('Preview process stopped.')
-    } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : 'Unable to stop preview.')
+    } catch (stopError) {
+      setPreviewError(stopError instanceof Error ? stopError.message : 'Unable to stop preview.')
     } finally {
       setPreviewBusy(false)
     }
@@ -457,6 +462,7 @@ export function SessionWorkbench({
           ) : tab === 'preview' ? (
             <Preview
               preview={preview}
+              error={previewError}
               loading={previewLoading}
               busy={previewBusy}
               viewport={previewViewport}
@@ -509,6 +515,7 @@ export function SessionWorkbench({
 
 function Preview({
   preview,
+  error,
   loading,
   busy,
   viewport,
@@ -520,6 +527,7 @@ function Preview({
   onViewport,
 }: {
   preview: PreviewSnapshot | null
+  error: string
   loading: boolean
   busy: boolean
   viewport: PreviewViewport
@@ -539,7 +547,7 @@ function Preview({
       <div className="workbench-empty preview-empty">
         <div className="preview-empty-mark"><Monitor size={26} /><span /></div>
         <strong>No preview command detected</strong>
-        <p>{preview?.error || 'Add a package.json dev or start script to this session workspace.'}</p>
+        <p>{preview?.error || error || 'Add a package.json dev or start script to this session workspace.'}</p>
         <button onClick={() => void onRefresh()}><RefreshCw size={14} /> Inspect again</button>
       </div>
     )
@@ -548,7 +556,14 @@ function Preview({
   const active = preview.status === 'starting' || preview.status === 'running'
   return (
     <div className="workbench-preview">
-      <header className="preview-toolbar">
+      <div className="preview-head">
+        {error && (
+          <div className="preview-error" role="alert">
+            <ShieldAlert size={14} />
+            <span>{privacy.content(error)}</span>
+          </div>
+        )}
+        <header className="preview-toolbar">
         <div className="preview-address">
           <span className={`preview-signal status-${preview.status}`} />
           <div>
@@ -581,7 +596,8 @@ function Preview({
             </button>
           )}
         </div>
-      </header>
+        </header>
+      </div>
 
       <div className="preview-stage">
         <div className={`preview-viewport viewport-${viewport}`}>

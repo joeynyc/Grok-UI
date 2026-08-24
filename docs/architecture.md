@@ -65,16 +65,26 @@ Diff paths are resolved beneath the repository root. Reads are bounded, binary c
 associated with a known local session. The browser cannot provide an arbitrary
 working directory or command.
 
-Starting a preview chooses an ephemeral port, passes loopback host and port
-settings to the detected package script, and spawns the executable with
-argument separation and no shell. Grok, token, secret, password, credential,
-and API-key environment variables are excluded. Output is stripped of terminal
-control sequences and kept as a bounded in-memory tail. Preview processes are
-not restored after a restart and are stopped during graceful shutdown.
+Starting a preview binds the child on `127.0.0.1` and publishes it through a
+cookie-stripping proxy at `http://preview.localhost:<port>`. That hostname is
+a different cookie host from `127.0.0.1` and `localhost`. Readiness probes the
+IPv4 loopback bind because `preview.localhost` can resolve to `::1`. The proxy
+also drops `Cookie` and `Authorization` before they reach generated code. Known
+frameworks receive explicit loopback host flags. Other scripts only get
+`HOST`/`PORT` as a best-effort bind; they may still listen on `0.0.0.0` if
+they ignore `HOST`.
 
-The application iframe uses the preview's separate loopback origin and a
-sandbox. Grok UI credentials and authentication cookies are not forwarded to
-the child process.
+Spawn uses argument separation and `shell: false`. Package managers may still
+invoke a shell internally to run the script body. Start and stop are serialized
+per session and terminate with `SIGTERM`, a short wait, then `SIGKILL`. Grok,
+token, secret, password, credential, and API-key environment variables are
+excluded. Output is stripped of terminal control sequences and kept as a bounded
+in-memory tail. Preview processes are not restored after a restart and are
+stopped during graceful server shutdown.
+
+The application iframe uses the `preview.localhost` origin and a sandbox.
+Grok UI credentials and authentication cookies are not forwarded to the child
+process.
 
 ## Network boundary
 

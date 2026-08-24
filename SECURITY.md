@@ -24,6 +24,7 @@ Include the affected version, deployment topology, reproduction steps, and impac
   Inspect the displayed package command before starting it, and stop previews
   when they are no longer needed.
 
+
 ## Multi-machine monitoring
 
 The v0.10 host agent is a read-only monitoring boundary. Its credential is
@@ -115,8 +116,13 @@ session, uses argument-separated process spawning without a shell, strips
 sensitive Grok and credential environment variables, and retains only a
 bounded log tail.
 
-The embedded iframe is sandboxed and allowed only from loopback origins by the
-Content Security Policy. That iframe sandbox is a browser boundary, not an
+Preview origins are isolated on `preview.localhost` behind a cookie-stripping
+proxy so dashboard `Cookie` and `Authorization` headers are not forwarded to
+generated applications. Generic `HOST`/`PORT` recipes are best-effort and may
+bind more widely if the script ignores those variables.
+
+The embedded iframe is sandboxed and allowed only from `preview.localhost` by
+the Content Security Policy. That iframe sandbox is a browser boundary, not an
 operating-system sandbox.
 
 ## Trust boundary
