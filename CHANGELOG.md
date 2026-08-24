@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Start a session from empty Live instead of leaving for Control. The same
+  launch form stays on Control for multi-lane work.
 - Isolated session previews on `preview.localhost` behind a cookie-stripping
   proxy so dashboard session cookies are not sent to generated applications.
 - Serialized preview start and stop, then terminate with SIGTERM followed by
@@ -11,8 +13,6 @@
   console error banner.
 - Grouped the primary nav into Work, Look back, and System so the twelve
   destinations stay available without competing as one list.
-- Added a first-run and idle-state Start a session here action that opens
-  Control without leaving the dashboard.
 - Added a global Needs you bar and nav badges for pending approvals and live
   attention.
 - Persisted the active view and open session in the URL hash so refresh keeps

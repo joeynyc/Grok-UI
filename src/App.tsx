@@ -65,6 +65,7 @@ import type {
 } from './types'
 import { ChangesView } from './views/ChangesView'
 import { ControlView } from './views/ControlView'
+import { SessionLaunchForm } from './views/SessionLaunchForm'
 import { SessionWorkbench } from './views/SessionWorkbench'
 import { RemoteSessionWorkbench } from './views/RemoteSessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
@@ -538,11 +539,12 @@ function App() {
                 live={live}
                 runtime={runtime}
                 data={data}
+                control={control}
                 setup={setup}
                 connected={streamConnected}
                 onOpenSession={openSession}
-                onStartSession={() => setActiveView('control')}
                 onRefresh={() => void load(true)}
+                onRefreshControl={refreshControl}
               />
             )}
             {view === 'control' && (
@@ -902,20 +904,22 @@ function LiveView({
   live,
   runtime,
   data,
+  control,
   setup,
   connected,
   onOpenSession,
-  onStartSession,
   onRefresh,
+  onRefreshControl,
 }: {
   live: LiveSnapshot | null
   runtime: RuntimeSnapshot | null
   data: DashboardPayload
+  control: ControlSnapshot | null
   setup: SetupStatus | null
   connected: boolean
   onOpenSession: (session: SessionRow | string) => void
-  onStartSession: () => void
   onRefresh: () => void
+  onRefreshControl: () => Promise<void>
 }) {
   const privacy = usePrivacy()
   const [selectedId, setSelectedId] = useState(live?.agents[0]?.id || '')
@@ -977,22 +981,28 @@ function LiveView({
         <FirstRunOnboarding
           connected={connected}
           setup={setup}
+          data={data}
+          live={live}
+          control={control}
           onRefresh={onRefresh}
-          onStartSession={onStartSession}
+          onRefreshControl={onRefreshControl}
+          onOpenSession={onOpenSession}
         />
       ) : !selected ? (
         <section className="no-live-agent section-gap">
           <div className="idle-radar" aria-hidden="true"><span /><span /><i /></div>
           <div className="kicker">Runtime clear</div>
           <h2>No active Grok sessions.</h2>
-          <p>Start a session from the dashboard or run Grok in any workspace. Either one appears here the moment it is live.</p>
-          <div className="idle-actions">
-            <button className="launch-button" type="button" onClick={onStartSession}>
-              <span>Start a session here</span>
-              <ArrowRight size={16} />
-            </button>
-            <code className="launch-command">grok</code>
-          </div>
+          <p>Start one here, or run Grok in any workspace. Either one appears here the moment it is live.</p>
+          <SessionLaunchForm
+            data={data}
+            live={live}
+            control={control}
+            heading="Start a session"
+            index="01"
+            onRefresh={onRefreshControl}
+            onLaunched={(session) => onOpenSession(session.id)}
+          />
         </section>
       ) : (
         <section className="live-console-grid section-gap">
@@ -1090,13 +1100,21 @@ function LiveView({
 function FirstRunOnboarding({
   connected,
   setup,
+  data,
+  live,
+  control,
   onRefresh,
-  onStartSession,
+  onRefreshControl,
+  onOpenSession,
 }: {
   connected: boolean
   setup: SetupStatus | null
+  data: DashboardPayload
+  live: LiveSnapshot | null
+  control: ControlSnapshot | null
   onRefresh: () => void
-  onStartSession: () => void
+  onRefreshControl: () => Promise<void>
+  onOpenSession: (session: SessionRow | string) => void
 }) {
   const [copied, setCopied] = useState('')
   const copy = async (command: string) => {
@@ -1136,8 +1154,8 @@ function FirstRunOnboarding({
       index: '03',
       label: 'Start the first session',
       copy: state?.state === 'ready'
-        ? 'Open any project and run Grok. The live agent will register here automatically.'
-        : state?.detail || 'Open any project and start a normal Grok CLI session.',
+        ? 'Start a session above, or run grok in any project. Either one registers here automatically.'
+        : state?.detail || 'Start a session above, or open any project and run grok.',
       command: 'grok',
       state: 'action',
     },
@@ -1152,16 +1170,23 @@ function FirstRunOnboarding({
               : setup ? 'FIRST CONTACT / SETUP REQUIRED' : 'FIRST CONTACT / CHECKING'}
           </span>
           <h2>Zero to live<br /><em>in three moves.</em></h2>
-          <button className="launch-button first-run-cta" type="button" onClick={onStartSession}>
-            <span>Start a session here</span>
-            <ArrowRight size={16} />
-          </button>
         </div>
         <div className="first-run-status">
           <span className={cli?.state === 'ready' ? 'is-ready' : 'needs-action'}><i /> Grok CLI</span>
           <span className={auth?.state === 'ready' ? 'is-ready' : 'needs-action'}><i /> Account</span>
           <span><i /> First session</span>
         </div>
+      </div>
+      <div className="first-run-launch">
+        <SessionLaunchForm
+          data={data}
+          live={live}
+          control={control}
+          heading="Start a session"
+          index="01"
+          onRefresh={onRefreshControl}
+          onLaunched={(session) => onOpenSession(session.id)}
+        />
       </div>
       <div className="first-run-steps">
         {steps.map((step) => (

@@ -6826,7 +6826,7 @@ kbd {
 }
 
 .first-run-head {
-  min-height: 255px;
+  min-height: 210px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -6835,11 +6835,31 @@ kbd {
   border-bottom: 1px solid var(--line);
 }
 
-.first-run-cta {
-  width: fit-content;
-  min-height: 42px;
+.first-run-launch {
+  padding: 22px clamp(28px, 5vw, 62px) 4px;
+}
+
+.first-run-launch .composer-panel,
+.no-live-agent .composer-panel {
+  width: min(760px, 100%);
+  text-align: left;
+}
+
+.no-live-agent .composer-panel {
   margin-top: 22px;
-  padding: 0 18px;
+}
+
+.launch-form-status {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+
+.launch-form-status.is-error {
+  color: var(--coral);
+}
+
+.launch-form-status.is-success {
+  color: var(--lime);
 }
 
 .first-run-head h2 {
