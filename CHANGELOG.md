@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Opening a live agent goes straight to the session. Live keeps the roster
+  and no longer duplicates the transcript.
+- Dropped the `/ 12` page counts that implied twelve peer rooms.
+- Quieter customer copy: Start session, Sign in, Session, Live updates.
 - Fixed Windows `npm start` by loading the server through a `file:` URL so
   drive letters are not treated as ESM schemes.
 - Needs you now opens the session console for both live attention and

@@ -151,7 +151,7 @@ export function FleetView({
   return (
     <>
       <header className="page-intro fleet-intro">
-        <div className="intro-index">09 / 12</div>
+        <div className="intro-index">09</div>
         <div>
           <div className="kicker"><Network size={14} /> Multi-machine monitoring</div>
           <h1>Every host.<br /><em>One quiet orbit.</em></h1>

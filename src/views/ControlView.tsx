@@ -101,9 +101,9 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
   return (
     <>
       <section className="page-intro command-intro">
-        <div className="page-intro-index">02 / 12</div>
+        <div className="page-intro-index">02</div>
         <div className="page-intro-copy">
-          <div className="kicker"><Command size={14} /> Command deck</div>
+          <div className="kicker"><Command size={14} /> Control</div>
           <h1>Don’t just watch.<br /><em>Run the room.</em></h1>
         </div>
         <p>Launch concurrent Grok agents, resume any conversation, approve sensitive work, and stop a turn without returning to the terminal.</p>
@@ -202,7 +202,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
       <section className="managed-lanes section-gap">
         <header>
           <div><span className="panel-index">03</span><h2>Managed lanes</h2></div>
-          <span>PARALLEL ACP SESSIONS</span>
+          <span>PARALLEL SESSIONS</span>
         </header>
         {control?.sessions.length ? (
           <div className="lane-grid">
@@ -314,7 +314,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                 </div>
               </article>
             )) : (
-              <div className="stream-empty">Waiting for the first ACP session update.</div>
+              <div className="stream-empty">Waiting for the first session update.</div>
             )}
           </div>
         </section>
