@@ -242,7 +242,7 @@ export function SessionWorkbench({
     try {
       await promptControlSession(session.id, { cwd: session.cwd, prompt })
       setPrompt('')
-      setMessage(data?.managed ? 'Follow-up sent.' : 'Session attached to ACP control and resumed.')
+      setMessage(data?.managed ? 'Follow-up sent.' : 'Session attached and resumed.')
       await refresh(true)
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : 'Unable to send the follow-up.')
@@ -377,7 +377,7 @@ export function SessionWorkbench({
             ) : (
               <div className="workbench-title">
                 <div>
-                  <span>SESSION CONSOLE / {privacy.identifier(sessionId)}</span>
+                  <span>Session · {privacy.identifier(sessionId)}</span>
                   <h1>{privacy.sessionTitle(session?.title || `Session ${sessionId.slice(0, 8)}`, sessionId)}</h1>
                 </div>
                 <button onClick={() => setRenaming(true)} aria-label="Rename session"><Pencil size={15} /></button>
@@ -489,7 +489,7 @@ export function SessionWorkbench({
         <form className="workbench-composer" onSubmit={send}>
           <div className="composer-mode">
             {data?.managed ? <Bot size={16} /> : <Sparkles size={16} />}
-            <span>{data?.managed ? 'CONTINUE MANAGED SESSION' : 'ATTACH TO ACP + RESUME'}</span>
+            <span>{data?.managed ? 'Continue session' : 'Attach and resume'}</span>
           </div>
           <textarea
             value={prompt}
@@ -504,9 +504,9 @@ export function SessionWorkbench({
           />
           <button disabled={sending || !control?.connected || !prompt.trim() || data?.control?.state === 'stopping'}>
             {sending ? <LoaderCircle className="is-spinning" size={17} /> : <CornerDownLeft size={17} />}
-            <span>{sending ? 'SENDING' : data?.managed ? 'SEND' : 'ATTACH'}</span>
+            <span>{sending ? 'Sending' : data?.managed ? 'Send' : 'Attach'}</span>
           </button>
-          <small>{control?.connected ? '⌘ ↵ to send' : 'ACP control offline'}</small>
+          <small>{control?.connected ? '⌘ ↵ to send' : 'Control offline'}</small>
         </form>
       </section>
     </div>
@@ -776,7 +776,7 @@ function Details({ session, data }: { session: SessionRow | null; data: SessionW
     ['Sandbox', session.sandboxProfile],
     ['Created', new Date(session.createdAt).toLocaleString()],
     ['Updated', new Date(session.updatedAt).toLocaleString()],
-    ['Runtime source', data?.live ? privacy.enabled ? 'CLI PID ••••' : `CLI PID ${data.live.pid}` : data?.managed ? 'Grok UI ACP' : 'Local archive'],
+    ['Runtime source', data?.live ? privacy.enabled ? 'CLI PID ••••' : `CLI PID ${data.live.pid}` : data?.managed ? 'Grok UI control' : 'Local archive'],
     ['Managed', data?.managed ? 'Yes — durable control record' : 'No — attach with a follow-up'],
     ['Archive state', session.archived ? 'Archived in Grok UI' : 'Active'],
     ['Disk footprint', `${compact(session.diskBytes)} bytes`],

@@ -53,7 +53,6 @@ import type {
   FleetSnapshot,
   FleetHostView,
   LiveAgent,
-  LiveFeedItem,
   LiveSnapshot,
   RankedDatum,
   RuntimeSnapshot,
@@ -830,7 +829,7 @@ function Sidebar({
         </div>
         <div className="sidebar-foot">
           <span>UI / {packageJson.version}</span>
-          <span>Control</span>
+          <span>Local</span>
         </div>
       </aside>
     </>
@@ -867,7 +866,7 @@ function TopBar({
         <button className="icon-button mobile-menu" onClick={onMenu} aria-label="Open navigation">
           <Menu size={19} />
         </button>
-        <span className="topbar-path">GROK / HUD /</span>
+        <span className="topbar-path">GROK /</span>
         <strong>{activeItem.label}</strong>
       </div>
       <div className="topbar-actions">
@@ -931,7 +930,6 @@ function LiveView({
 }) {
   const privacy = usePrivacy()
   const [selectedId, setSelectedId] = useState(live?.agents[0]?.id || '')
-  const feedRef = useRef<HTMLDivElement>(null)
   const agents = live?.agents || []
 
   useEffect(() => {
@@ -943,12 +941,11 @@ function LiveView({
   }, [agents, selectedId])
 
   const selected = agents.find((agent) => agent.id === selectedId) || agents[0]
-  const selectedSession = selected ? data.sessions.find((session) => session.id === selected.id) : null
 
-  useEffect(() => {
-    const feed = feedRef.current
-    if (feed) feed.scrollTop = feed.scrollHeight
-  }, [selected?.id, selected?.feed.at(-1)?.id])
+  const openAgent = (agent: LiveAgent) => {
+    const session = data.sessions.find((row) => row.id === agent.id)
+    onOpenSession(session || agent.id)
+  }
 
   return (
     <>
@@ -1024,7 +1021,10 @@ function LiveView({
                 <button
                   key={agent.id}
                   className={selected.id === agent.id ? 'is-active' : ''}
-                  onClick={() => setSelectedId(agent.id)}
+                  onClick={() => {
+                    setSelectedId(agent.id)
+                    openAgent(agent)
+                  }}
                 >
                   <span className="agent-number">A{String(index + 1).padStart(2, '0')}</span>
                   <AgentStateGlyph state={agent.state} />
@@ -1035,10 +1035,6 @@ function LiveView({
                   <ChevronRight size={15} />
                 </button>
               ))}
-            </div>
-            <div className="roster-foot">
-              <span>Registry source</span>
-              <strong>active_sessions.json</strong>
             </div>
           </aside>
 
@@ -1053,50 +1049,12 @@ function LiveView({
               </div>
               <div className="runtime-actions">
                 <AgentStatePill agent={selected} />
-                <button className="text-button" onClick={() => onOpenSession(selectedSession || selected.id)}>
+                <button className="text-button" onClick={() => openAgent(selected)}>
                   Open Session <ArrowRight size={14} />
                 </button>
               </div>
             </header>
-
-            <div className="runtime-instruments">
-              <RuntimeInstrument label="Phase" value={selected.phase.replaceAll('_', ' ')} />
-              <RuntimeInstrument label="Turns" value={formatNumber(selected.turns)} />
-              <RuntimeInstrument label="Tool calls" value={formatNumber(selected.toolCalls)} />
-              <RuntimeInstrument
-                label="Context"
-                value={selected.contextSize
-                  ? `${formatNumber(selected.contextUsed)} / ${formatNumber(selected.contextSize)}`
-                  : `${Math.round(selected.contextUsage * 100)}%`}
-              />
-              <RuntimeInstrument
-                label="Cost"
-                value={selected.costAmount
-                  ? `${selected.costAmount.toFixed(3)} ${selected.costCurrency}`
-                  : '—'}
-              />
-              <RuntimeInstrument label="Process" value={privacy.enabled ? 'PID ••••' : `PID ${selected.pid}`} />
-            </div>
-
-            {selected.currentTool && (
-              <div className="current-operation">
-                <span className="operation-pulse" />
-                <span>CURRENT OPERATION</span>
-                <strong>{privacy.content(selected.currentTool)}</strong>
-              </div>
-            )}
-
-            <div className="live-feed-head">
-              <span>Structured session stream</span>
-              <span>{selected.feed.length} recent events</span>
-            </div>
-            <div className="live-feed" aria-live="polite" ref={feedRef}>
-              {selected.feed.length ? selected.feed.map((item, index) => (
-                <LiveFeedRow item={item} index={index} key={item.id} />
-              )) : (
-                <EmptyInline>The session is open and idle. New ACP updates will appear here instantly.</EmptyInline>
-              )}
-            </div>
+            <p className="live-open-hint">Chat, approve, and inspect changes in the session.</p>
           </section>
         </section>
       )}
@@ -1271,37 +1229,6 @@ function AgentStatePill({ agent }: { agent: LiveAgent }) {
   return <span className={`agent-state-pill state-pill-${agent.state}`}><i />{label}</span>
 }
 
-function RuntimeInstrument({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><strong>{value}</strong></div>
-}
-
-function LiveFeedRow({ item, index }: { item: LiveFeedItem; index: number }) {
-  const privacy = usePrivacy()
-  const labels: Record<LiveFeedItem['type'], string> = {
-    user: 'YOU',
-    assistant: 'GROK',
-    thought: 'THOUGHT',
-    tool: 'TOOL',
-    plan: 'PLAN',
-    system: 'SYSTEM',
-  }
-  return (
-    <article className={`live-feed-row feed-${item.type}`}>
-      <span className="feed-sequence">{String(index + 1).padStart(2, '0')}</span>
-      <div className="feed-rail"><i /></div>
-      <div className="feed-content">
-        <header>
-          <span>{labels[item.type]}</span>
-          <strong>{privacy.content(item.title)}</strong>
-          {item.status && <em className={`tool-status status-${item.status}`}>{item.status}</em>}
-          <time>{item.timestamp && item.timestamp !== new Date(0).toISOString() ? timeAgo(item.timestamp) : 'live'}</time>
-        </header>
-        {item.text && <p>{privacy.content(item.text)}</p>}
-      </div>
-    </article>
-  )
-}
-
 function Overview({
   data,
   live,
@@ -1437,7 +1364,7 @@ function SystemCard({
       <div className="system-footer">
         <span>
           <span className={`status-dot ${connected ? 'is-live' : ''}`} />
-          {connected ? 'EVENT STREAM LINKED' : 'EVENT STREAM RECONNECTING'}
+          {connected ? 'Updates connected' : 'Updates reconnecting'}
         </span>
         <span>{privacy.path(data.grokHome)}</span>
       </div>
@@ -1942,7 +1869,7 @@ function PageIntro({
 }) {
   return (
     <header className="page-intro">
-      <div className="intro-index">{index} / 12</div>
+      <div className="intro-index">{index}</div>
       <div>
         <div className="kicker">{eyebrow}</div>
         <h1>{title}</h1>
@@ -2217,7 +2144,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         </label>
         {error && <div className="access-error">{error}</div>}
         <button className="launch-button" disabled={submitting}>
-          <span>{submitting ? 'VERIFYING' : 'OPEN COMMAND DECK'}</span>
+          <span>{submitting ? 'Checking…' : 'Sign in'}</span>
           <ArrowRight size={16} />
         </button>
       </form>

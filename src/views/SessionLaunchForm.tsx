@@ -212,13 +212,13 @@ export function SessionLaunchForm({
         className="launch-button"
         disabled={submitting || !control?.connected || (mode === 'new' && !cwd)}
       >
-        <span>{submitting ? 'Starting…' : mode === 'new' ? 'LAUNCH AGENT' : 'SEND PROMPT'}</span>
+        <span>{submitting ? 'Starting…' : mode === 'new' ? 'Start session' : 'Send'}</span>
         <CornerDownLeft size={17} />
       </button>
       <p className="composer-note">
         {control?.connected
           ? 'Tool executions still pass through Grok’s native permission system. Nothing is silently auto-approved.'
-          : 'Control is offline. The dashboard can still watch CLI sessions, but it cannot start one until ACP reconnects.'}
+          : 'Control is offline. The dashboard can still watch CLI sessions, but it cannot start one until control reconnects.'}
       </p>
     </form>
   )

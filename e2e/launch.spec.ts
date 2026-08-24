@@ -228,8 +228,10 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
     await expect(page.getByLabel('WORKSPACE')).toBeVisible()
     await expect(page.getByLabel('INSTRUCTION')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'LAUNCH AGENT' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
     await expect(page).toHaveURL(/#\/live$/)
+    await expect(page.getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: /Control/ })).toHaveCount(0)
   })
 
   test('discovers a newly registered Grok CLI session over the live stream', async ({ page }) => {
@@ -238,7 +240,7 @@ test.describe.serial('public launch path', () => {
 
     await expect(page.getByText('Confidential Launch').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('1', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText(/Inspect secret-client/).first()).toBeVisible()
+    await expect(page.getByText(/secret-client/).first()).toBeVisible()
     await expect(page.getByText(/PID \d+/).first()).toBeVisible()
     await page.getByRole('button', { name: /Open Session/ }).click()
     await expect(page).toHaveURL(new RegExp(`#/live/${sessionId}$`))
@@ -252,14 +254,14 @@ test.describe.serial('public launch path', () => {
   test('reconnects the browser event stream after a server interruption', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /Overview/ }).click()
-    await expect(page.getByText('EVENT STREAM LINKED')).toBeVisible()
+    await expect(page.getByText('Updates connected')).toBeVisible()
 
     const disconnected = await page.request.post('/api/test/disconnect-events')
     expect(disconnected.ok()).toBe(true)
     expect((await disconnected.json()).disconnected).toBeGreaterThan(0)
-    await expect(page.getByText('EVENT STREAM RECONNECTING')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Updates reconnecting')).toBeVisible({ timeout: 10_000 })
 
-    await expect(page.getByText('EVENT STREAM LINKED')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Updates connected')).toBeVisible({ timeout: 15_000 })
   })
 
   test('shows bounded process, test, and external-call runtime intelligence', async ({ page }) => {
@@ -301,7 +303,7 @@ test.describe.serial('public launch path', () => {
 
     const dialog = page.getByRole('dialog', { name: /Session console:/ })
     await expect(dialog).toBeVisible()
-    await expect(page.getByText(/SESSION CONSOLE/)).toBeVisible()
+    await expect(page.getByText(/^Session · /)).toBeVisible()
     await expect(page.getByText('Chat with this agent, review its activity, and inspect changes.')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Session console sections' })).toBeVisible()
     const prompt = page.getByPlaceholder('Send a follow-up to this session…')
@@ -323,7 +325,9 @@ test.describe.serial('public launch path', () => {
   test('redacts sensitive runtime data and persists Privacy Mode', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Confidential Launch').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Open Session' }).click()
     await expect(page.getByText(/192\.168\.1\.42/)).toBeVisible()
+    await page.getByRole('button', { name: 'Close session console panel' }).click()
 
     await page.getByRole('button', { name: 'Privacy' }).click()
     await expect(page.getByRole('button', { name: 'Privacy on' })).toHaveAttribute('aria-pressed', 'true')
@@ -371,7 +375,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill(instruction)
-    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
 
     await expect(page.getByText('New Grok lane launched.')).toBeVisible()
     const lane = page.locator('.lane-card').filter({ hasText: instruction })
@@ -451,7 +455,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Start workflow fixture')
-    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
 
     await page.getByRole('button', { name: /Runs/ }).click()
     await expect(page.getByRole('heading', { name: /Every run/ })).toBeVisible()
@@ -494,7 +498,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Start scaled workflow fixture')
-    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
 
     await page.getByRole('button', { name: /Runs/ }).click()
     await expect(page.getByText('scale-check').first()).toBeVisible({ timeout: 10_000 })
@@ -562,7 +566,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Hold for permission cancellation')
-    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
 
     const lane = page.locator('.lane-card').filter({ hasText: 'Hold for permission cancellation' })
     await expect(lane.locator('.lane-state')).toContainText('attention')
@@ -581,7 +585,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Run the long-running cancellation verification')
-    await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
 
     const lane = page.locator('.lane-card').filter({ hasText: 'Run the long-running cancellation verification' })
     await expect(lane.locator('.lane-state')).toContainText('working')
@@ -642,7 +646,7 @@ test.describe.serial('public launch path', () => {
 
     await page.getByRole('button', { name: 'Open Session' }).click()
     await expect(page.getByRole('dialog', { name: /Session console:/ })).toBeVisible()
-    await expect(page.getByText(/SESSION CONSOLE/)).toBeVisible()
+    await expect(page.getByText(/^Session · /)).toBeVisible()
     const consoleOverflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
