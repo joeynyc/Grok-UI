@@ -4,20 +4,13 @@ import {
   Check,
   CircleStop,
   Command,
-  CornerDownLeft,
   FolderGit2,
   Radio,
   ShieldAlert,
-  Sparkles,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import {
-  cancelControlSession,
-  createControlSession,
-  promptControlSession,
-  resolveControlPermission,
-} from '../api'
+import { useEffect, useState } from 'react'
+import { cancelControlSession, resolveControlPermission } from '../api'
 import type {
   ControlSession,
   ControlSnapshot,
@@ -25,6 +18,7 @@ import type {
   LiveSnapshot,
 } from '../types'
 import { usePrivacy } from '../privacy'
+import { SessionLaunchForm } from './SessionLaunchForm'
 
 interface ControlViewProps {
   data: DashboardPayload
@@ -36,13 +30,6 @@ interface ControlViewProps {
 
 function compact(value: number): string {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-}
-
-function uniqueWorkspaces(data: DashboardPayload, live: LiveSnapshot | null): string[] {
-  return [...new Set([
-    ...(live?.agents.map((agent) => agent.cwd) || []),
-    ...data.sessions.map((session) => session.cwd),
-  ].filter(Boolean))]
 }
 
 function cancellationTime(session: ControlSession): string {
@@ -67,32 +54,10 @@ function lastCompletedTool(session: ControlSession): string {
 
 export function ControlView({ data, live, control, onRefresh, onOpenSession }: ControlViewProps) {
   const privacy = usePrivacy()
-  const workspaces = useMemo(() => uniqueWorkspaces(data, live), [data, live])
-  const resumable = useMemo(() => {
-    const seen = new Set<string>()
-    return [
-      ...(control?.sessions || []).map((session) => ({
-        id: session.id,
-        title: session.title,
-        cwd: session.cwd,
-      })),
-      ...data.sessions.filter((session) => !session.archived),
-    ].filter((session) => {
-      if (seen.has(session.id)) return false
-      seen.add(session.id)
-      return true
-    })
-  }, [control, data.sessions])
-  const [mode, setMode] = useState<'new' | 'resume'>('new')
-  const [cwd, setCwd] = useState(workspaces[0] || '')
-  const [sessionId, setSessionId] = useState('')
-  const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState('')
-  const [reasoningEffort, setReasoningEffort] = useState('medium')
-  const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [selectedLane, setSelectedLane] = useState(control?.sessions[0]?.id || '')
+  const [resumeRequest, setResumeRequest] = useState({ id: '', token: 0 })
 
   useEffect(() => {
     if (!control?.sessions.length) {
@@ -106,31 +71,6 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
 
   const activeLane = control?.sessions.find((session) => session.id === selectedLane)
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!prompt.trim()) return
-    setSubmitting(true)
-    setError('')
-    setMessage('')
-    try {
-      if (mode === 'resume') {
-        const selected = resumable.find((session) => session.id === sessionId)
-        if (!selected) throw new Error('Choose a session to resume.')
-        await promptControlSession(selected.id, { cwd: selected.cwd, prompt })
-        setMessage(`Prompt sent to ${privacy.sessionTitle(selected.title, selected.id)}.`)
-      } else {
-        await createControlSession({ cwd, prompt, model, reasoningEffort })
-        setMessage('New Grok lane launched.')
-      }
-      setPrompt('')
-      await onRefresh()
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Command failed.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const cancel = async (id: string) => {
     setError('')
     try {
@@ -143,9 +83,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
   }
 
   const resume = (session: ControlSession) => {
-    setMode('resume')
-    chooseSession(session.id)
-    setMessage(`Ready to resume ${privacy.sessionTitle(session.title, session.id)}.`)
+    setResumeRequest({ id: session.id, token: Date.now() })
     window.requestAnimationFrame(() => {
       document.querySelector('.composer-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
@@ -158,12 +96,6 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
     } catch (decisionError) {
       setError(decisionError instanceof Error ? decisionError.message : 'Unable to resolve permission.')
     }
-  }
-
-  const chooseSession = (id: string) => {
-    setSessionId(id)
-    const selected = resumable.find((session) => session.id === id)
-    if (selected) setCwd(selected.cwd)
   }
 
   return (
@@ -209,92 +141,14 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
       {message && <div className="control-banner is-success"><Check size={17} /><span>{message}</span></div>}
 
       <section className="command-deck-grid section-gap">
-        <form className="composer-panel panel-cut" onSubmit={submit}>
-          <header>
-            <div>
-              <span className="panel-index">01</span>
-              <h2>Issue a command</h2>
-            </div>
-            <span className="composer-shortcut">⌘ ↵</span>
-          </header>
-
-          <div className="mode-switch" role="tablist" aria-label="Command target">
-            <button type="button" className={mode === 'new' ? 'is-active' : ''} onClick={() => setMode('new')}>
-              <Sparkles size={15} /> New agent
-            </button>
-            <button type="button" className={mode === 'resume' ? 'is-active' : ''} onClick={() => setMode('resume')}>
-              <Radio size={15} /> Resume session
-            </button>
-          </div>
-
-          {mode === 'resume' ? (
-            <label className="control-field">
-              <span>SESSION</span>
-              <select value={sessionId} onChange={(event) => chooseSession(event.target.value)} required>
-                <option value="">Choose a recorded session…</option>
-                {resumable.map((session) => (
-                  <option value={session.id} key={session.id}>
-                    {privacy.sessionTitle(session.title, session.id)} — {privacy.identifier(session.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <>
-              <label className="control-field">
-                <span>WORKSPACE</span>
-                <input
-                  list="grok-workspaces"
-                  value={privacy.enabled ? '' : cwd}
-                  onChange={(event) => setCwd(event.target.value)}
-                  placeholder={privacy.enabled ? 'Workspace path hidden — turn Privacy Mode off to edit' : '/absolute/path/to/project'}
-                  readOnly={privacy.enabled}
-                  required={!privacy.enabled}
-                />
-                <datalist id="grok-workspaces">
-                  {!privacy.enabled && workspaces.map((workspace) => <option value={workspace} key={workspace} />)}
-                </datalist>
-              </label>
-              <div className="control-field-row">
-                <label className="control-field">
-                  <span>MODEL <em>optional</em></span>
-                  <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Use Grok default" />
-                </label>
-                <label className="control-field">
-                  <span>REASONING</span>
-                  <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
-                    {['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => <option key={effort}>{effort}</option>)}
-                  </select>
-                </label>
-              </div>
-            </>
-          )}
-
-          <label className="prompt-field">
-            <span>INSTRUCTION</span>
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') event.currentTarget.form?.requestSubmit()
-              }}
-              placeholder="What should Grok do next?"
-              rows={7}
-              maxLength={32_000}
-              required
-            />
-            <small>{compact(prompt.length)} / 32K</small>
-          </label>
-
-          <button
-            className="launch-button"
-            disabled={submitting || !control?.connected || (mode === 'new' && !cwd)}
-          >
-            <span>{submitting ? 'DISPATCHING' : mode === 'new' ? 'LAUNCH AGENT' : 'SEND PROMPT'}</span>
-            <CornerDownLeft size={17} />
-          </button>
-          <p className="composer-note">Tool executions still pass through Grok’s native permission system. Nothing is silently auto-approved.</p>
-        </form>
+        <SessionLaunchForm
+          data={data}
+          live={live}
+          control={control}
+          requestedResumeId={resumeRequest.id}
+          resumeToken={resumeRequest.token}
+          onRefresh={onRefresh}
+        />
 
         <aside className="approval-panel">
           <header>

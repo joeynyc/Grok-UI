@@ -225,10 +225,11 @@ test.describe.serial('public launch path', () => {
 
     await expect(page.getByText('FIRST CONTACT / READY')).toBeVisible()
     await expect(page.getByText('Environment ready.')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Start a session here' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start a session here' }).click()
-    await expect(page.getByRole('heading', { name: /Run the room/ })).toBeVisible()
-    await expect(page).toHaveURL(/#\/control$/)
+    await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
+    await expect(page.getByLabel('WORKSPACE')).toBeVisible()
+    await expect(page.getByLabel('INSTRUCTION')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'LAUNCH AGENT' })).toBeVisible()
+    await expect(page).toHaveURL(/#\/live$/)
   })
 
   test('discovers a newly registered Grok CLI session over the live stream', async ({ page }) => {
