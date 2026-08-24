@@ -34,7 +34,7 @@ export const VIEW_IDS: ViewId[] = [
 
 export const NAV_GROUPS: Array<{ id: string; label: string; items: ViewId[] }> = [
   { id: 'work', label: 'Work', items: ['live', 'runs', 'changes', 'sessions'] },
-  { id: 'look-back', label: 'Look back', items: ['overview', 'activity', 'usage'] },
+  { id: 'look-back', label: 'Look back', items: ['overview', 'usage'] },
   { id: 'system', label: 'System', items: ['fleet'] },
 ]
 

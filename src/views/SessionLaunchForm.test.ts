@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { listResumable, uniqueWorkspaces } from './SessionLaunchForm'
+import { canLaunchSession, listResumable, uniqueWorkspaces } from './SessionLaunchForm'
 import type { ControlSnapshot, DashboardPayload, LiveSnapshot, SessionRow } from '../types'
 
 function session(id: string, cwd: string, archived = false): SessionRow {
@@ -48,5 +48,11 @@ describe('session launch helpers', () => {
     )
 
     expect(rows.map((row) => row.id)).toEqual(['managed', 'cli'])
+  })
+
+  it('only launches when control is connected', () => {
+    expect(canLaunchSession(null)).toBe(false)
+    expect(canLaunchSession({ connected: false } as ControlSnapshot)).toBe(false)
+    expect(canLaunchSession({ connected: true } as ControlSnapshot)).toBe(true)
   })
 })

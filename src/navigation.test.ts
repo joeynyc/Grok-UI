@@ -38,7 +38,7 @@ describe('hash routes', () => {
 })
 
 describe('primary nav', () => {
-  it('keeps Control, Library, Memory, and Themes off the primary rail', () => {
+  it('keeps Control, Activity, Library, Memory, and Themes off the primary rail', () => {
     const items = NAV_GROUPS.flatMap((group) => group.items)
     expect(items).toEqual([
       'live',
@@ -46,7 +46,6 @@ describe('primary nav', () => {
       'changes',
       'sessions',
       'overview',
-      'activity',
       'usage',
       'fleet',
     ])

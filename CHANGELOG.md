@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Overview now holds the two-week activity matrix. Activity stays on the
+  hash route and command palette instead of competing in the primary nav.
+- Hidden the dead Start session button while control is offline so first-run
+  does not look broken.
 - Opening a live agent goes straight to the session. Live keeps the roster
   and no longer duplicates the transcript.
 - Dropped the `/ 12` page counts that implied twelve peer rooms.

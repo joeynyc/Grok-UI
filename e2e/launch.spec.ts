@@ -232,6 +232,8 @@ test.describe.serial('public launch path', () => {
     await expect(page).toHaveURL(/#\/live$/)
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })
       .getByRole('button', { name: /Control/ })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: /Activity/ })).toHaveCount(0)
   })
 
   test('discovers a newly registered Grok CLI session over the live stream', async ({ page }) => {
