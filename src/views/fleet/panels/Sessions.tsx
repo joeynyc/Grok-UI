@@ -116,8 +116,8 @@ export function FleetSessions({
           {canStart && (
             <form className="fleet-remote-start" onSubmit={start}>
               <div>
-                <span>START SECURE REMOTE SESSION</span>
-                <strong>Launch Grok in an already observed workspace.</strong>
+                <span>New session</span>
+                <strong>Start Grok in a workspace this host already has.</strong>
               </div>
               <select
                 aria-label="Remote workspace"
@@ -153,42 +153,56 @@ export function FleetSessions({
           {error && <div className="fleet-partial-note" role="alert"><AlertTriangle size={14} /> {privacy.content(error)}</div>}
           {!phoneLayout && <div className="fleet-table-wrap">
             <table className="fleet-table fleet-session-table">
-              <caption className="sr-only">Read-only sessions observed on this host</caption>
-              <thead><tr><th>Status</th><th>Session</th><th>Workspace</th><th>Model</th><th>Turns</th><th>Updated</th><th><span className="sr-only">Inspect</span></th></tr></thead>
+              <caption className="sr-only">Sessions on this host</caption>
+              <thead><tr><th>Status</th><th>Session</th><th>Workspace</th><th>Model</th><th>Turns</th><th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
-                {observed.map((session) => (
-                  <tr key={`${host.id}:${session.id}`}>
-                    <td><span className={`fleet-session-state state-${session.status}`}><i /> {session.status}</span></td>
-                    <td><strong>{privacy.sessionTitle(session.title, `${host.id}:${session.id}`)}</strong><small>{privacy.content(session.summary)}</small></td>
-                    <td>{privacy.workspace(session.workspace || session.cwd)}</td>
-                    <td>{session.model ? privacy.capability(session.model, 'Model') : '—'}</td>
-                    <td>{integer.format(session.turns)}</td>
-                    <td title={exactTime(session.updatedAt)}>{elapsedLabel(session.updatedAt)}</td>
-                    <td>
-                      <span className="fleet-session-actions">
-                        {canControl && managedSessionIds.has(session.id) && (
-                          <button
-                            className="fleet-open-remote-session"
-                            type="button"
-                            onClick={() => onOpenRemoteSession(host, session)}
-                            aria-label={`Continue remote session ${privacy.sessionTitle(session.title, `${host.id}:${session.id}`)}`}
-                          >
-                            <MessageSquare size={13} />
-                          </button>
-                        )}
+                {observed.map((session) => {
+                  const title = privacy.sessionTitle(session.title, `${host.id}:${session.id}`)
+                  const managed = canControl && managedSessionIds.has(session.id)
+                  return (
+                    <tr key={`${host.id}:${session.id}`}>
+                      <td><span className={`fleet-session-state state-${session.status}`}><i /> {session.status}</span></td>
+                      <td>
                         <button
-                          className="fleet-inspect-session"
+                          className="fleet-session-open"
                           type="button"
-                          onClick={() => void inspect(session)}
-                          disabled={loadingId === session.id}
-                          aria-label={`Inspect read-only session ${privacy.sessionTitle(session.title, `${host.id}:${session.id}`)}`}
+                          onClick={() => managed ? onOpenRemoteSession(host, session) : void inspect(session)}
                         >
-                          {loadingId === session.id ? <LoaderCircle className="is-spinning" size={13} /> : <ChevronRight size={13} />}
+                          <strong>{title}</strong>
+                          <small>{privacy.content(session.summary)}</small>
                         </button>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>{privacy.workspace(session.workspace || session.cwd)}</td>
+                      <td>{session.model ? privacy.capability(session.model, 'Model') : '—'}</td>
+                      <td>{integer.format(session.turns)}</td>
+                      <td title={exactTime(session.updatedAt)}>{elapsedLabel(session.updatedAt)}</td>
+                      <td>
+                        <span className="fleet-session-actions">
+                          {managed && (
+                            <button
+                              className="fleet-open-remote-session"
+                              type="button"
+                              onClick={() => onOpenRemoteSession(host, session)}
+                              aria-label={`Continue remote session ${title}`}
+                            >
+                              <MessageSquare size={13} />
+                              Continue
+                            </button>
+                          )}
+                          <button
+                            className="fleet-inspect-session"
+                            type="button"
+                            onClick={() => void inspect(session)}
+                            disabled={loadingId === session.id}
+                            aria-label={`Inspect read-only session ${title}`}
+                          >
+                            {loadingId === session.id ? <LoaderCircle className="is-spinning" size={13} /> : <ChevronRight size={13} />}
+                          </button>
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>}
@@ -202,10 +216,14 @@ export function FleetSessions({
                     <span className={`fleet-session-state state-${session.status}`}><i /> {session.status}</span>
                     <time title={exactTime(session.updatedAt)}>{elapsedLabel(session.updatedAt)}</time>
                   </header>
-                  <div className="fleet-session-card-copy">
+                  <button
+                    className="fleet-session-card-copy"
+                    type="button"
+                    onClick={() => managed ? onOpenRemoteSession(host, session) : void inspect(session)}
+                  >
                     <strong>{title}</strong>
                     <small>{privacy.content(session.summary)}</small>
-                  </div>
+                  </button>
                   <dl>
                     <div>
                       <dt>Workspace</dt>
@@ -252,7 +270,7 @@ export function FleetSessions({
           {detail && (
             <section className="fleet-session-detail" aria-label={`Read-only session detail for ${privacy.sessionTitle(detail.session.title, detail.session.id)}`}>
               <header>
-                <div><span>REMOTE SESSION / READ ONLY</span><h3>{privacy.sessionTitle(detail.session.title, detail.session.id)}</h3></div>
+                <div><span>Read only</span><h3>{privacy.sessionTitle(detail.session.title, detail.session.id)}</h3></div>
                 <button type="button" onClick={() => setDetail(null)} aria-label="Close remote session detail"><X size={15} /></button>
               </header>
               <div className="fleet-session-detail-meta">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FleetHostView } from './types'
-import { isHistoricalHost, sectionAvailability } from './views/fleet/model'
+import { isHistoricalHost, preferredHostTab, sectionAvailability } from './views/fleet/model'
 
 function host(status: FleetHostView['status'], withSnapshot: boolean): FleetHostView {
   return {
@@ -86,5 +86,14 @@ describe('fleet section availability', () => {
     failed.consecutiveFailures = 1
     expect(sectionAvailability(failed, 'sessions')).toBe('stale')
     expect(isHistoricalHost(failed)).toBe(true)
+  })
+
+  it('opens the Sessions tab when a host has remote sessions enabled', () => {
+    const remote = host('healthy', true)
+    remote.config.controlEnabled = true
+    expect(preferredHostTab(remote, 'overview')).toBe('sessions')
+    expect(preferredHostTab(remote, 'usage')).toBe('sessions')
+    expect(preferredHostTab(host('healthy', true), 'usage')).toBe('usage')
+    expect(preferredHostTab(undefined, 'overview')).toBe('overview')
   })
 })

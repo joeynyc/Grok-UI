@@ -241,7 +241,7 @@ export function RemoteSessionWorkbench({
       className="workbench-layer"
       role="dialog"
       aria-modal="true"
-      aria-label={`Remote session: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
+      aria-label={`Session console: ${privacy.sessionTitle(session?.title || sessionId, sessionId)}`}
       tabIndex={-1}
     >
       <button
@@ -258,7 +258,7 @@ export function RemoteSessionWorkbench({
             </span>
             <div className="workbench-title">
               <div>
-                <span>SECURE REMOTE SESSION / {privacy.identifier(sessionId)}</span>
+                <span>Session · {privacy.identifier(sessionId)}</span>
                 <h1>{privacy.sessionTitle(session?.title || `Session ${sessionId.slice(0, 8)}`, sessionId)}</h1>
               </div>
             </div>
@@ -319,7 +319,7 @@ export function RemoteSessionWorkbench({
           {loading && !data ? (
             <div className="workbench-loading">
               <LoaderCircle size={25} className="is-spinning" />
-              <span>Opening secure remote session…</span>
+              <span>Opening session…</span>
             </div>
           ) : (
             <SessionTimeline
@@ -334,7 +334,7 @@ export function RemoteSessionWorkbench({
         <form className="workbench-composer" onSubmit={send}>
           <div className="composer-mode">
             {streamConnected ? <Wifi size={16} /> : <WifiOff size={16} />}
-            <span>CONTINUE ON {privacy.host(hostLabel, hostId).toUpperCase()}</span>
+            <span>Continue session</span>
           </div>
           <textarea
             value={prompt}
@@ -347,7 +347,7 @@ export function RemoteSessionWorkbench({
                 event.currentTarget.form?.requestSubmit()
               }
             }}
-            placeholder="Continue this Grok Build session…"
+            placeholder="Send a follow-up to this session…"
             rows={2}
             maxLength={32_000}
             required

@@ -136,3 +136,12 @@ export function isHistoricalHost(host: FleetHostView): boolean {
         .includes(host.status)
     )
 }
+
+export function hostAllowsRemoteSessions(host: FleetHostView): boolean {
+  return host.config.controlEnabled === true
+}
+
+export function preferredHostTab(host: FleetHostView | undefined, current: FleetTab): FleetTab {
+  if (host && hostAllowsRemoteSessions(host)) return 'sessions'
+  return current
+}

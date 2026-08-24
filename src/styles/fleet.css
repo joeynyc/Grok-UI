@@ -632,7 +632,24 @@
 .fleet-table td small { margin-top: 5px; color: var(--muted); line-height: 1.4; }
 .fleet-session-table th:nth-child(1) { width: 90px; }
 .fleet-session-table th:nth-child(2) { width: 26%; }
-.fleet-session-table th:last-child { width: 45px; }
+.fleet-session-table th:last-child { width: 132px; }
+.fleet-session-open,
+.fleet-session-card-copy {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fleet-session-open:hover strong,
+.fleet-session-open:focus-visible strong,
+.fleet-session-card-copy:hover strong,
+.fleet-session-card-copy:focus-visible strong { color: var(--lime); }
 .fleet-session-state { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-transform: capitalize; }
 .fleet-session-state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .fleet-session-state.state-live { color: var(--lime); }
@@ -663,8 +680,6 @@
 .fleet-session-card-copy {
   min-width: 0;
   padding: 14px;
-  display: grid;
-  gap: 6px;
 }
 .fleet-session-card-copy strong {
   overflow-wrap: anywhere;
@@ -739,7 +754,6 @@
   color: var(--paper);
 }
 .fleet-inspect-session,
-.fleet-open-remote-session,
 .fleet-session-detail > header > button {
   width: 29px;
   height: 29px;
@@ -750,10 +764,22 @@
   background: transparent;
   cursor: pointer;
 }
+.fleet-open-remote-session {
+  height: 29px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--lime);
+  border: 1px solid color-mix(in srgb, var(--lime) 35%, transparent);
+  background: transparent;
+  font-size: var(--type-meta);
+  font-weight: 650;
+  cursor: pointer;
+}
 .fleet-inspect-session:hover,
 .fleet-open-remote-session:hover,
 .fleet-session-detail > header > button:hover { color: var(--paper); border-color: var(--line-strong); }
-.fleet-open-remote-session { color: var(--lime); border-color: color-mix(in srgb, var(--lime) 35%, transparent); }
 .fleet-remote-start {
   padding: 12px;
   display: grid;
