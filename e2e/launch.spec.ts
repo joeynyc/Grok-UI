@@ -210,20 +210,20 @@ test.describe.serial('public launch path', () => {
     })
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible()
-    await expect(page.getByText('FIRST CONTACT / SETUP REQUIRED')).toBeVisible()
+    await expect(page.getByText('Setup needed')).toBeVisible()
     await expect(page.getByText('Grok CLI is missing or cannot run.')).toBeVisible()
 
     await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'unauthenticated\n')
     await page.getByRole('button', { name: /Recheck setup/ }).click()
 
-    await expect(page.getByText('FIRST CONTACT / SETUP REQUIRED')).toBeVisible()
+    await expect(page.getByText('Setup needed')).toBeVisible()
     await expect(page.getByText('Grok Build e2e')).toBeVisible()
     await expect(page.getByText('Authentication is required.')).toBeVisible()
 
     await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'ready\n')
     await page.getByRole('button', { name: /Recheck setup/ }).click()
 
-    await expect(page.getByText('FIRST CONTACT / READY')).toBeVisible()
+    await expect(page.getByText('Ready to start')).toBeVisible()
     await expect(page.getByText('Environment ready.')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
     await expect(page.getByLabel('WORKSPACE')).toBeVisible()
@@ -367,10 +367,8 @@ test.describe.serial('public launch path', () => {
 
   test('launches and approves a managed ACP control session', async ({ page }, testInfo) => {
     const instruction = `Run the public release verification attempt ${testInfo.repeatEachIndex + 1}-${testInfo.retry + 1}`
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill(instruction)
     await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
@@ -407,10 +405,8 @@ test.describe.serial('public launch path', () => {
   })
 
   test('recovers the ACP control channel after its child process exits', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     const response = await page.request.post('/api/control/sessions', {
       data: {
         cwd: workspace,
@@ -451,10 +447,8 @@ test.describe.serial('public launch path', () => {
   })
 
   test('surfaces workflow telemetry and recovers a failed run across sessions', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Start workflow fixture')
     await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
@@ -496,10 +490,8 @@ test.describe.serial('public launch path', () => {
   })
 
   test('pages and searches a large workflow agent roster', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Start scaled workflow fixture')
     await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
@@ -566,10 +558,8 @@ test.describe.serial('public launch path', () => {
   })
 
   test('cancels cleanly while a permission decision is pending', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Hold for permission cancellation')
     await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
@@ -587,10 +577,8 @@ test.describe.serial('public launch path', () => {
   })
 
   test('cancels an active tool and records a confirmed post-stop result', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Control/ }).click()
-
-    await expect(page.getByText('ACP CONTROL LINKED')).toBeVisible({ timeout: 10_000 })
+    await page.goto('/#/control')
+    await expect(page.getByText('Control connected')).toBeVisible({ timeout: 10_000 })
     await page.getByLabel('WORKSPACE').fill(workspace)
     await page.getByLabel('INSTRUCTION').fill('Run the long-running cancellation verification')
     await page.getByRole('button', { name: 'LAUNCH AGENT' }).click()
@@ -725,7 +713,7 @@ test.describe.serial('public launch path', () => {
     await expect(page.locator('.sidebar-close')).toBeFocused()
     await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })
-      .getByRole('button', { name: /Themes/ })).toBeFocused()
+      .getByRole('button', { name: /Fleet/ })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.locator('.sidebar-close')).toBeFocused()
     await page.locator('.sidebar-close').click()
@@ -791,18 +779,18 @@ test.describe.serial('public launch path', () => {
     await page.goto('/')
 
     for (const section of [
-      'Live',
-      'Control',
-      'Runs',
-      'Changes',
-      'Overview',
-      'Sessions',
-      'Activity',
-      'Library',
-      'Memory',
-      'Themes',
+      'live',
+      'control',
+      'runs',
+      'changes',
+      'overview',
+      'sessions',
+      'activity',
+      'library',
+      'memory',
+      'themes',
     ]) {
-      await page.getByRole('button', { name: new RegExp(section, 'i') }).first().click()
+      await page.goto(`/#/${section}`)
       expect(await unreadableVisibleText(page), `${section} contains text below 8px`).toEqual([])
     }
   })

@@ -113,12 +113,12 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
         <div>
           <span className={`status-dot ${control?.connected ? 'is-live' : ''}`} />
           <strong>{control?.connected
-            ? 'ACP CONTROL LINKED'
+            ? 'Control connected'
             : control?.reconnecting
-              ? `RECONNECTING CONTROL · ${control.reconnectAttempt}`
+              ? `Reconnecting · ${control.reconnectAttempt}`
               : control?.starting
-                ? 'STARTING CONTROL'
-                : 'CONTROL OFFLINE'}</strong>
+                ? 'Starting control'
+                : 'Control offline'}</strong>
           <small>{control?.agentName || 'Grok'} {control?.agentVersion}</small>
         </div>
         <div><span>MANAGED LANES</span><strong>{control?.sessions.length || 0}</strong></div>

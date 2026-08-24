@@ -2659,13 +2659,26 @@ kbd {
   overflow: auto;
 }
 
-.capability-list > div {
+.capability-list > div,
+.capability-list > button {
+  width: 100%;
   min-height: 43px;
+  padding: 0;
   display: grid;
   grid-template-columns: 25px 1fr auto;
   align-items: center;
   gap: 8px;
+  border: 0;
   border-bottom: 1px solid rgba(255,255,255,.055);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.capability-list > button.is-selected,
+.memory-file-list > button.is-selected {
+  background: color-mix(in srgb, var(--lime) 8%, transparent);
 }
 
 .capability-list strong {
@@ -2798,13 +2811,21 @@ kbd {
   gap: 1px;
 }
 
-.memory-file-list > div {
+.memory-file-list > div,
+.memory-file-list > button {
+  width: 100%;
   min-height: 53px;
+  padding: 0;
   display: grid;
   grid-template-columns: 20px 1fr auto;
   align-items: center;
   gap: 7px;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .memory-file-list svg {
@@ -2830,6 +2851,28 @@ kbd {
   color: var(--muted);
   font-size: var(--type-label);
   font-style: normal;
+}
+
+.inventory-detail {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  background: rgba(13, 15, 12, .72);
+}
+
+.inventory-detail small {
+  color: var(--muted);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.inventory-detail strong {
+  display: block;
+  margin: 8px 0 6px;
+}
+
+.inventory-detail p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .drawer-layer,

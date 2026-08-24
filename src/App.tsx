@@ -109,7 +109,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'themes', index: '12', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
 ]
 
-const MOBILE_NAV_IDS: ViewId[] = ['live', 'control', 'runs', 'fleet']
+const MOBILE_NAV_IDS: ViewId[] = ['live', 'runs', 'sessions', 'fleet']
 
 type ThemeId = 'operator' | 'event-horizon' | 'minimal-calm'
 
@@ -511,6 +511,7 @@ function App() {
             onMenu={openMobileNav}
             onPalette={() => setPaletteOpen(true)}
             onRefresh={() => void load(true)}
+            onOpenThemes={() => setActiveView('themes')}
             onTogglePrivacy={() => setPrivacyMode((enabled) => !enabled)}
           />
 
@@ -526,10 +527,6 @@ function App() {
                 privacyMode={privacyMode}
                 onOpen={() => {
                   if (!attention.primary) return
-                  if (attention.primary.kind === 'permission') {
-                    setActiveView('control')
-                    return
-                  }
                   openSession(attention.primary.sessionId)
                 }}
               />
@@ -833,7 +830,7 @@ function Sidebar({
         </div>
         <div className="sidebar-foot">
           <span>UI / {packageJson.version}</span>
-          <span>ACP CONTROL</span>
+          <span>Control</span>
         </div>
       </aside>
     </>
@@ -849,6 +846,7 @@ function TopBar({
   onMenu,
   onPalette,
   onRefresh,
+  onOpenThemes,
   onTogglePrivacy,
 }: {
   active: ViewId
@@ -859,6 +857,7 @@ function TopBar({
   onMenu: () => void
   onPalette: () => void
   onRefresh: () => void
+  onOpenThemes: () => void
   onTogglePrivacy: () => void
 }) {
   const activeItem = NAV_ITEMS.find((item) => item.id === active)!
@@ -874,7 +873,7 @@ function TopBar({
       <div className="topbar-actions">
         <div className="sync-state">
           <span className={`status-dot ${connected ? 'is-live' : ''}`} />
-          <span className="sync-copy">{connected ? 'Event stream' : 'Reconnecting'}</span>
+          <span className="sync-copy">{connected ? 'Live updates' : 'Reconnecting'}</span>
           <span className="sync-time">{generatedAt ? timeAgo(generatedAt) : '—'}</span>
         </div>
         <button
@@ -886,6 +885,15 @@ function TopBar({
         >
           <ShieldCheck size={15} />
           <span>{privacyMode ? 'Privacy on' : 'Privacy'}</span>
+        </button>
+        <button
+          className={`privacy-toggle ${active === 'themes' ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={active === 'themes'}
+          onClick={onOpenThemes}
+        >
+          <Palette size={15} />
+          <span>Themes</span>
         </button>
         <button className="command-trigger" onClick={onPalette}>
           <Search size={15} />
@@ -970,9 +978,9 @@ function LiveView({
           tone={live?.attentionCount ? 'coral' : 'paper'}
         />
         <LiveSummaryMetric
-          label="Transport"
-          value={connected ? 'SSE' : '—'}
-          detail="filesystem events → browser"
+          label="Updates"
+          value={connected ? 'Live' : '—'}
+          detail="local session changes"
           tone={connected ? 'lime' : 'coral'}
         />
       </section>
@@ -1166,8 +1174,8 @@ function FirstRunOnboarding({
         <div>
           <span className="kicker">
             {setup?.ready
-              ? 'FIRST CONTACT / READY'
-              : setup ? 'FIRST CONTACT / SETUP REQUIRED' : 'FIRST CONTACT / CHECKING'}
+              ? 'Ready to start'
+              : setup ? 'Setup needed' : 'Checking setup'}
           </span>
           <h2>Zero to live<br /><em>in three moves.</em></h2>
         </div>
@@ -1806,18 +1814,21 @@ function LibraryView({
 }) {
   const privacy = usePrivacy()
   const filtered = data.library.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase()))
+  const [selectedKey, setSelectedKey] = useState('')
   const groups = [
     { kind: 'skill' as const, label: 'Skills', icon: Sparkles, copy: 'Reusable instruction packages available to Grok.' },
     { kind: 'agent' as const, label: 'Agent profiles', icon: Bot, copy: 'Specialized operating roles for delegated work.' },
     { kind: 'plugin' as const, label: 'Marketplace manifests', icon: Box, copy: 'Plugin packages discovered in the local cache.' },
   ]
+  const ordered = groups.flatMap((group) => filtered.filter((item) => item.kind === group.kind))
+  const selected = ordered.find((item) => `${item.kind}:${item.source}:${item.name}` === selectedKey) || ordered[0] || null
   return (
     <>
       <PageIntro
         index="10"
         eyebrow="Capability library"
         title={<>What Grok can<br /><em>reach for.</em></>}
-        description="The local skills, agent profiles, and marketplace packages shaping every run."
+        description="Inspect a local skill, agent profile, or marketplace package. Bodies stay on disk."
       />
       <div className="view-toolbar">
         <SearchField value={query} onChange={onQuery} placeholder="Filter the capability index…" />
@@ -1831,18 +1842,33 @@ function LibraryView({
             <Panel key={group.kind} index={`04${String.fromCharCode(65 + groupIndex)}`} title={group.label} meta={`${items.length} found`}>
               <div className="library-intro"><Icon size={20} /><p>{group.copy}</p></div>
               <div className="capability-list">
-                {items.length ? items.map((item) => (
-                  <div key={`${item.kind}:${item.source}:${item.name}`}>
-                    <span className="capability-icon">{item.kind === 'skill' ? 'S' : item.kind === 'agent' ? 'A' : 'P'}</span>
-                    <strong>{privacy.capability(item.name, group.label.slice(0, -1))}</strong>
-                    <span className={`source-tag source-${item.source}`}>{item.source}</span>
-                  </div>
-                )) : <EmptyInline>No matching {group.label.toLowerCase()}.</EmptyInline>}
+                {items.length ? items.map((item) => {
+                  const key = `${item.kind}:${item.source}:${item.name}`
+                  return (
+                    <button
+                      type="button"
+                      key={key}
+                      className={selected && `${selected.kind}:${selected.source}:${selected.name}` === key ? 'is-selected' : ''}
+                      onClick={() => setSelectedKey(key)}
+                    >
+                      <span className="capability-icon">{item.kind === 'skill' ? 'S' : item.kind === 'agent' ? 'A' : 'P'}</span>
+                      <strong>{privacy.capability(item.name, group.label.slice(0, -1))}</strong>
+                      <span className={`source-tag source-${item.source}`}>{item.source}</span>
+                    </button>
+                  )
+                }) : <EmptyInline>No matching {group.label.toLowerCase()}.</EmptyInline>}
               </div>
             </Panel>
           )
         })}
       </section>
+      {selected && (
+        <section className="inventory-detail section-gap" aria-live="polite">
+          <small>Selected capability</small>
+          <strong>{privacy.capability(selected.name, selected.kind)}</strong>
+          <p>{selected.kind} from {selected.source} source. The file body is not loaded into the dashboard.</p>
+        </section>
+      )}
     </>
   )
 }
@@ -1850,20 +1876,22 @@ function LibraryView({
 function MemoryView({ data }: { data: DashboardPayload }) {
   const privacy = usePrivacy()
   const scopes = ['global', 'workspace', 'session']
+  const [selectedName, setSelectedName] = useState(data.memory[0]?.name || '')
+  const selected = data.memory.find((item) => item.name === selectedName) || data.memory[0] || null
   return (
     <>
       <PageIntro
         index="11"
         eyebrow="Durable recall"
         title={<>Memory without<br /><em>the mystery.</em></>}
-        description="A privacy-conscious inventory of Grok’s durable Markdown memory. Content stays on disk and is not rendered here."
+        description="Inspect which memory files Grok can see. File bodies stay on disk and are not rendered here."
       />
       <section className="memory-hero">
         <div className="memory-symbol"><BrainCircuit size={44} strokeWidth={1.2} /><span /></div>
         <div>
-          <span className="kicker">Experimental memory index</span>
+          <span className="kicker">Local memory index</span>
           <strong>{data.memory.length}</strong>
-          <p>local artifacts across {new Set(data.memory.map((item) => item.scope)).size} scopes</p>
+          <p>files across {new Set(data.memory.map((item) => item.scope)).size} scopes</p>
         </div>
         <div className="privacy-badge"><ShieldCheck size={18} /><span><strong>Metadata only</strong><small>Prompts and memory body text stay hidden.</small></span></div>
       </section>
@@ -1874,17 +1902,29 @@ function MemoryView({ data }: { data: DashboardPayload }) {
             <Panel key={scope} index={`05${String.fromCharCode(65 + scopeIndex)}`} title={`${scope[0].toUpperCase()}${scope.slice(1)} memory`} meta={`${items.length} files`}>
               <div className="memory-file-list">
                 {items.length ? items.map((item) => (
-                  <div key={item.name}>
+                  <button
+                    type="button"
+                    key={item.name}
+                    className={selected?.name === item.name ? 'is-selected' : ''}
+                    onClick={() => setSelectedName(item.name)}
+                  >
                     <Archive size={15} />
                     <span><strong>{privacy.memory(item.name)}</strong><small>{timeAgo(item.updatedAt)}</small></span>
                     <em>{formatBytes(item.bytes)}</em>
-                  </div>
+                  </button>
                 )) : <EmptyInline>No {scope} memory files found.</EmptyInline>}
               </div>
             </Panel>
           )
         })}
       </section>
+      {selected && (
+        <section className="inventory-detail section-gap" aria-live="polite">
+          <small>Selected memory file</small>
+          <strong>{privacy.memory(selected.name)}</strong>
+          <p>{selected.scope} scope · {formatBytes(selected.bytes)} · updated {timeAgo(selected.updatedAt)}. The Markdown body is not loaded into the dashboard.</p>
+        </section>
+      )}
     </>
   )
 }
