@@ -21,11 +21,14 @@ import { APP_VERSION } from './app-version.js'
 import { parseWorkflowNotification, workflowControlCommand } from './workflow-state.js'
 import {
   launchMeta,
+  parseExitPlanRequest,
   parsePermissionMode,
   planActionPrompt,
+  planExitVerdict,
   slashPrompt,
   type LaunchOptions,
   type PlanAction,
+  type PlanExitVerdict,
   type SessionSlash,
 } from './control-options.js'
 import { applyPlanUpdate, emptyPlan, todosFromPlan } from './plan-projection.js'
@@ -41,6 +44,11 @@ interface PromptControlSession {
 interface PendingPermission {
   public: ControlPermission
   resolve: (response: RequestPermissionResponse) => void
+}
+
+interface PendingPlanExit {
+  sessionId: string
+  resolve: (response: { type: PlanExitVerdict }) => void
 }
 
 function now(): string {
@@ -91,6 +99,7 @@ function sessionSeed(id: string, cwd: string, prompt: string, model = ''): Contr
     plan: null,
     todos: [],
     queue: [],
+    awaitingPlanApproval: false,
   }
 }
 
@@ -161,6 +170,7 @@ export class GrokController extends EventEmitter {
   private loadedSessions = new Set<string>()
   private replayingSessions = new Set<string>()
   private permissions = new Map<string, PendingPermission>()
+  private planExits = new Map<string, PendingPlanExit>()
   private cancellationTimers = new Map<string, NodeJS.Timeout>()
   private stderrTail: string[] = []
   private persistTimer: NodeJS.Timeout | null = null
@@ -231,6 +241,7 @@ export class GrokController extends EventEmitter {
       permission.resolve({ outcome: { outcome: 'cancelled' } })
     })
     this.permissions.clear()
+    this.rejectPlanExits()
     this.connection?.close()
     this.connection = null
     this.connected = false
@@ -332,7 +343,6 @@ export class GrokController extends EventEmitter {
     const session = this.sessions.get(sessionId)
     if (!session) throw new Error('Managed session was not found.')
     if (!session.plan || session.plan.status === 'none') throw new Error('This session has no plan to review.')
-    const prompt = planActionPrompt(action, note)
     const status = action === 'approve'
       ? 'approved'
       : action === 'quit'
@@ -340,13 +350,32 @@ export class GrokController extends EventEmitter {
         : action === 'request-changes'
           ? 'changes-requested'
           : session.plan.status
+    const parked = this.planExits.get(sessionId)
     this.sessions.set(sessionId, {
       ...session,
       plan: { ...session.plan, status, updatedAt: now() },
       planMode: action !== 'quit',
+      awaitingPlanApproval: false,
       updatedAt: now(),
     })
-    return this.promptSession({ sessionId, cwd: session.cwd, prompt })
+    if (parked) {
+      parked.resolve({ type: planExitVerdict(action) })
+      this.planExits.delete(sessionId)
+      this.emitSnapshot()
+      if (action === 'request-changes' || action === 'comment') {
+        return this.promptSession({
+          sessionId,
+          cwd: session.cwd,
+          prompt: planActionPrompt(action, note),
+        })
+      }
+      return this.sessions.get(sessionId)!
+    }
+    return this.promptSession({
+      sessionId,
+      cwd: session.cwd,
+      prompt: planActionPrompt(action, note),
+    })
   }
 
   async runSlash(sessionId: string, command: SessionSlash, argument = ''): Promise<ControlSession> {
@@ -511,6 +540,10 @@ export class GrokController extends EventEmitter {
       const app = acp.client({ name: 'grok-ui' })
         .onRequest(acp.methods.client.session.requestPermission, ({ params }) =>
           this.requestPermission(params))
+        .onRequest('x.ai/exit_plan_mode', (params: unknown) => params, ({ params }) =>
+          this.requestPlanExit(params))
+        .onRequest('_x.ai/exit_plan_mode', (params: unknown) => params, ({ params }) =>
+          this.requestPlanExit(params))
         .onNotification(acp.methods.client.session.update, ({ params }) => {
           this.sessionUpdate(params)
         })
@@ -595,6 +628,7 @@ export class GrokController extends EventEmitter {
       permission.resolve({ outcome: { outcome: 'cancelled' } })
     })
     this.permissions.clear()
+    this.rejectPlanExits()
     this.sessions = new Map([...this.sessions].map(([id, session]) => {
       if (!['starting', 'working', 'attention', 'stopping'].includes(session.state)) {
         return [id, session]
@@ -708,6 +742,39 @@ export class GrokController extends EventEmitter {
     if (!cancelled && nextPrompt) void this.runPrompt(sessionId, nextPrompt.text)
   }
 
+  private requestPlanExit(params: unknown): Promise<{ type: PlanExitVerdict }> {
+    const { sessionId, plan } = parseExitPlanRequest(params)
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return Promise.resolve({ type: 'abandoned' })
+    }
+    const current = session.plan && session.plan.status !== 'none' ? session.plan : emptyPlan()
+    const planState = {
+      ...current,
+      status: 'review' as const,
+      markdown: plan || current.markdown,
+      title: current.title || 'Plan approval',
+      updatedAt: now(),
+    }
+    this.sessions.set(sessionId, {
+      ...session,
+      state: 'attention',
+      awaitingPlanApproval: true,
+      plan: planState,
+      todos: todosFromPlan(planState),
+      updatedAt: now(),
+    })
+    return new Promise((resolve) => {
+      this.planExits.set(sessionId, { sessionId, resolve })
+      this.emitSnapshot()
+    })
+  }
+
+  private rejectPlanExits(): void {
+    this.planExits.forEach((pending) => pending.resolve({ type: 'abandoned' }))
+    this.planExits.clear()
+  }
+
   private requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const current = this.sessions.get(params.sessionId)
     if (current && ['requested', 'confirmed', 'timed_out'].includes(current.cancellationStatus)) {
@@ -772,11 +839,16 @@ export class GrokController extends EventEmitter {
     if (
       (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'agent_message_chunk')
       && next.cancellationStatus === 'none'
+      && ['starting', 'working', 'attention', 'stopping'].includes(next.state)
     ) {
       next.state = 'working'
     }
     let item = feedItem(update)
-    if (item?.type === 'tool' && item.status === 'failed' && next.cancellationStatus === 'requested') {
+    if (
+      item?.type === 'tool'
+      && item.status === 'failed'
+      && ['requested', 'confirmed'].includes(next.cancellationStatus)
+    ) {
       item = { ...item, status: 'cancelled' }
     }
     if (item) {

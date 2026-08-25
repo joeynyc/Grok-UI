@@ -21,7 +21,7 @@ and move through your complete local history without leaving the browser.
 </a>
 
 [**Watch the 24-second product tour**](https://github.com/joeynyc/Grok-UI/releases/download/v0.5.1/grok-ui-dashboard-tour-final-white-logo.mp4)
-· [**See what’s new in v0.11.0**](https://github.com/joeynyc/Grok-UI/releases/tag/v0.11.0)
+· [**See what’s new in v0.12.0**](https://github.com/joeynyc/Grok-UI/releases/tag/v0.12.0)
 · [**Quickstart**](#quickstart) · [**What it does**](#what-it-does)
 · [**Architecture**](#architecture) · [**Security**](#privacy-and-security)
 

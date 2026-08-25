@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { launchMeta, parsePermissionMode, planActionPrompt, slashPrompt } from './control-options.js'
+import {
+  launchMeta,
+  parseExitPlanRequest,
+  parsePermissionMode,
+  planActionPrompt,
+  planExitVerdict,
+  slashPrompt,
+} from './control-options.js'
 
 describe('launch options', () => {
   it('maps permission and plan flags into ACP meta', () => {
@@ -28,5 +35,12 @@ describe('launch options', () => {
     expect(() => planActionPrompt('comment')).toThrow(/comment/)
     expect(slashPrompt('create-workflow', 'review the branch')).toBe('/create-workflow review the branch')
     expect(slashPrompt('compact')).toBe('/compact')
+    expect(planExitVerdict('approve')).toBe('approved')
+    expect(planExitVerdict('quit')).toBe('abandoned')
+    expect(planExitVerdict('request-changes')).toBe('rejected')
+    expect(parseExitPlanRequest({
+      sessionId: 'sess-1',
+      planContent: 'Ship the fixture',
+    })).toEqual({ sessionId: 'sess-1', plan: 'Ship the fixture' })
   })
 })

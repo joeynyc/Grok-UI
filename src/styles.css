@@ -1028,6 +1028,15 @@ kbd {
   padding: 14px 16px 0;
 }
 
+.session-more {
+  color: var(--muted);
+}
+
+.session-more summary {
+  cursor: pointer;
+  font-size: var(--type-label);
+}
+
 .plan-actions,
 .session-commands {
   display: flex;

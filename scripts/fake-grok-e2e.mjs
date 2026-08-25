@@ -171,6 +171,25 @@ const agent = acp.agent({ name: 'grok-e2e' })
           ],
         },
       })
+      const verdict = await client.request('x.ai/exit_plan_mode', {
+        sessionId: params.sessionId,
+        planContent: '- Inspect the fixture workspace\n- Write the verified change',
+      })
+      const approved = verdict?.type === 'approved'
+      await client.notify(acp.methods.client.session.update, {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'plan',
+          entries: [
+            {
+              content: 'Inspect the fixture workspace',
+              priority: 'high',
+              status: approved ? 'in_progress' : 'pending',
+            },
+            { content: 'Write the verified change', priority: 'medium', status: 'pending' },
+          ],
+        },
+      })
       return { stopReason: 'end_turn', usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
     }
     if (instruction.includes('Approve the current plan')) {

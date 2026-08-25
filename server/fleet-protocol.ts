@@ -549,6 +549,7 @@ function safeControlSession(value: unknown): Omit<ControlSession, 'workflows'> |
     plan: null,
     todos: [],
     queue: [],
+    awaitingPlanApproval: false,
   }
 }
 

@@ -143,7 +143,7 @@ describe('GrokController workflows', () => {
 })
 
 describe('GrokController plan review', () => {
-  it('projects a plan and approves it through the existing session prompt', async () => {
+  it('projects a plan and approves it through Grok’s exit_plan_mode request', async () => {
     process.env.GROK_BIN = fakeGrok
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-plan-'))
     cleanup.push(workspace)
@@ -155,11 +155,25 @@ describe('GrokController plan review', () => {
       prompt: 'Draft a plan fixture',
       planMode: true,
     })
-    await waitFor(() => controller.snapshot().sessions[0]?.plan?.status === 'review', 5_000)
+    await waitFor(() => controller.snapshot().sessions[0]?.awaitingPlanApproval === true, 5_000)
     expect(controller.snapshot().sessions[0]?.todos).toHaveLength(2)
 
     await controller.reviewPlan(created.id, 'approve')
     await waitFor(() => controller.snapshot().sessions[0]?.plan?.status === 'planning', 5_000)
-    expect(controller.snapshot().sessions[0]?.lastPrompt).toContain('Approve the current plan')
+    expect(controller.snapshot().sessions[0]?.lastPrompt).toBe('Draft a plan fixture')
+    expect(controller.snapshot().sessions[0]?.awaitingPlanApproval).toBe(false)
+
+    const followOn = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Write a fixture after plan review',
+    })
+    await waitFor(() => controller.snapshot().permissions.some((item) => item.sessionId === followOn.id), 5_000)
+    const permission = controller.snapshot().permissions.find((item) => item.sessionId === followOn.id)
+    expect(permission).toBeTruthy()
+    controller.resolvePermission(permission!.id, 'allow')
+    await waitFor(() => {
+      const row = controller.snapshot().sessions.find((item) => item.id === followOn.id)
+      return row?.state === 'idle' && row.totalTokens === 20
+    }, 5_000)
   })
 })
