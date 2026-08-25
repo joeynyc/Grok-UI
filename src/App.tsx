@@ -52,7 +52,6 @@ import type {
   DashboardPayload,
   FleetSnapshot,
   FleetHostView,
-  LiveAgent,
   LiveSnapshot,
   RankedDatum,
   RuntimeSnapshot,
@@ -65,6 +64,9 @@ import type {
 import { ChangesView } from './views/ChangesView'
 import { ControlView } from './views/ControlView'
 import { SessionLaunchForm } from './views/SessionLaunchForm'
+import { LiveRoster } from './views/LiveRoster'
+import { LibraryInspect } from './views/LibraryInspect'
+import { buildRoster } from './live-roster'
 import { SessionWorkbench } from './views/SessionWorkbench'
 import { RemoteSessionWorkbench } from './views/RemoteSessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
@@ -928,24 +930,8 @@ function LiveView({
   onRefresh: () => void
   onRefreshControl: () => Promise<void>
 }) {
-  const privacy = usePrivacy()
-  const [selectedId, setSelectedId] = useState(live?.agents[0]?.id || '')
-  const agents = live?.agents || []
-
-  useEffect(() => {
-    if (!agents.length) {
-      setSelectedId('')
-      return
-    }
-    if (!agents.some((agent) => agent.id === selectedId)) setSelectedId(agents[0].id)
-  }, [agents, selectedId])
-
-  const selected = agents.find((agent) => agent.id === selectedId) || agents[0]
-
-  const openAgent = (agent: LiveAgent) => {
-    const session = data.sessions.find((row) => row.id === agent.id)
-    onOpenSession(session || agent.id)
-  }
+  const roster = useMemo(() => buildRoster(live, control), [control, live])
+  const selected = roster[0]
 
   return (
     <>
@@ -1010,53 +996,12 @@ function LiveView({
           />
         </section>
       ) : (
-        <section className="live-console-grid section-gap">
-          <aside className="agent-roster">
-            <header>
-              <span>ACTIVE / {String(agents.length).padStart(2, '0')}</span>
-              <span className="live-word"><i /> LIVE</span>
-            </header>
-            <div className="agent-roster-list">
-              {agents.map((agent, index) => (
-                <button
-                  key={agent.id}
-                  className={selected.id === agent.id ? 'is-active' : ''}
-                  onClick={() => {
-                    setSelectedId(agent.id)
-                    openAgent(agent)
-                  }}
-                >
-                  <span className="agent-number">A{String(index + 1).padStart(2, '0')}</span>
-                  <AgentStateGlyph state={agent.state} />
-                  <span className="agent-roster-copy">
-                    <strong>{privacy.sessionTitle(agent.title, agent.id)}</strong>
-                    <small>{privacy.workspace(agent.cwd)} · {privacy.enabled ? 'PID ••••' : `PID ${agent.pid}`}</small>
-                  </span>
-                  <ChevronRight size={15} />
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <section className="runtime-console">
-            <header className="runtime-head">
-              <div className="runtime-identity">
-                <AgentStateGlyph state={selected.state} />
-                <div>
-                  <span>{privacy.workspace(selected.cwd)} / {selected.model}</span>
-                  <h2>{privacy.sessionTitle(selected.title, selected.id)}</h2>
-                </div>
-              </div>
-              <div className="runtime-actions">
-                <AgentStatePill agent={selected} />
-                <button className="text-button" onClick={() => openAgent(selected)}>
-                  Open Session <ArrowRight size={14} />
-                </button>
-              </div>
-            </header>
-            <p className="live-open-hint">Chat, approve, and inspect changes in the session.</p>
-          </section>
-        </section>
+        <LiveRoster
+          live={live}
+          control={control}
+          sessions={data.sessions}
+          onOpenSession={onOpenSession}
+        />
       )}
       <RuntimeIntelligencePanels runtime={runtime} />
     </>
@@ -1208,25 +1153,6 @@ function LiveSummaryMetric({
       <small>{detail}</small>
     </div>
   )
-}
-
-function AgentStateGlyph({ state }: { state: LiveAgent['state'] }) {
-  return (
-    <span className={`agent-state-glyph agent-state-${state}`} aria-label={state}>
-      <i />
-    </span>
-  )
-}
-
-function AgentStatePill({ agent }: { agent: LiveAgent }) {
-  const label = agent.state === 'attention'
-    ? 'Needs input'
-    : agent.state === 'working'
-      ? 'Working'
-      : agent.state === 'waiting'
-        ? 'Waiting on model'
-        : 'Idle / attached'
-  return <span className={`agent-state-pill state-pill-${agent.state}`}><i />{label}</span>
 }
 
 function Overview({
@@ -1768,6 +1694,7 @@ function LibraryView({
           <p>{selected.kind} from {selected.source} source. The file body is not loaded into the dashboard.</p>
         </section>
       )}
+      <LibraryInspect cwd={data.sessions[0]?.cwd || ''} />
     </>
   )
 }

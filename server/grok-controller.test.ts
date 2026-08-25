@@ -141,3 +141,25 @@ describe('GrokController workflows', () => {
     expect(controller.snapshot().sessions[0]?.lastPrompt).toBe('/workflow resume release-check')
   })
 })
+
+describe('GrokController plan review', () => {
+  it('projects a plan and approves it through the existing session prompt', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-plan-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const created = await controller.createSession({
+      cwd: workspace,
+      prompt: 'Draft a plan fixture',
+      planMode: true,
+    })
+    await waitFor(() => controller.snapshot().sessions[0]?.plan?.status === 'review', 5_000)
+    expect(controller.snapshot().sessions[0]?.todos).toHaveLength(2)
+
+    await controller.reviewPlan(created.id, 'approve')
+    await waitFor(() => controller.snapshot().sessions[0]?.plan?.status === 'planning', 5_000)
+    expect(controller.snapshot().sessions[0]?.lastPrompt).toContain('Approve the current plan')
+  })
+})

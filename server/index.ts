@@ -31,6 +31,9 @@ import { FleetRegistryStore, publicHostConfig } from './fleet-registry.js'
 import { FleetMonitor } from './fleet-monitor.js'
 import { controlSessionRow, liveAgentRow } from './session-projection.js'
 import { PreviewSupervisor } from './preview-supervisor.js'
+import { parsePermissionMode, parsePlanAction, parseSlash } from './control-options.js'
+import { deleteGrokSession, inspectWorkspace, listGrokModels } from './grok-catalog.js'
+import { transcriptMarkdown } from './session-transcript.js'
 
 const app = express()
 const sessionState = new SessionStateStore()
@@ -519,6 +522,9 @@ app.post('/api/control/sessions', async (request, response) => {
       prompt: typeof request.body?.prompt === 'string' ? request.body.prompt : '',
       model: typeof request.body?.model === 'string' ? request.body.model : '',
       reasoningEffort: typeof request.body?.reasoningEffort === 'string' ? request.body.reasoningEffort : '',
+      permissionMode: parsePermissionMode(request.body?.permissionMode),
+      planMode: request.body?.planMode === true,
+      worktree: request.body?.worktree === true,
     })
     response.status(202).json(session)
   } catch (error) {
@@ -558,6 +564,62 @@ app.post('/api/control/sessions/:sessionId/workflows/:workflowId', async (reques
     response.status(202).json({ accepted: true })
   } catch (error) {
     response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to control workflow.' })
+  }
+})
+
+app.get('/api/control/models', async (_request, response) => {
+  try {
+    response.json({ models: await listGrokModels() })
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to list models.' })
+  }
+})
+
+app.post('/api/control/sessions/:id/plan', async (request, response) => {
+  try {
+    const session = await controller.reviewPlan(
+      request.params.id,
+      parsePlanAction(request.body?.action),
+      typeof request.body?.note === 'string' ? request.body.note : '',
+    )
+    response.status(202).json(session)
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to review plan.' })
+  }
+})
+
+app.post('/api/control/sessions/:id/command', async (request, response) => {
+  try {
+    const session = await controller.runSlash(
+      request.params.id,
+      parseSlash(request.body?.command),
+      typeof request.body?.argument === 'string' ? request.body.argument : '',
+    )
+    response.status(202).json(session)
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to run session command.' })
+  }
+})
+
+app.post('/api/control/sessions/:id/mode', async (request, response) => {
+  try {
+    const modeId = typeof request.body?.modeId === 'string' ? request.body.modeId : ''
+    response.json(await controller.setSessionMode(request.params.id, modeId))
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to set session mode.' })
+  }
+})
+
+app.get('/api/inspect', async (request, response) => {
+  const cwd = typeof request.query.cwd === 'string' ? request.query.cwd : ''
+  if (!cwd || !(await workspaceAllowed(cwd))) {
+    response.status(403).json({ error: 'Workspace is not associated with a Grok session.' })
+    return
+  }
+  try {
+    response.json(await inspectWorkspace(path.resolve(cwd)))
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to inspect workspace.' })
   }
 })
 
@@ -650,6 +712,43 @@ app.get('/api/sessions/:id/workbench', async (request, response, next) => {
     })
   } catch (error) {
     next(error)
+  }
+})
+
+app.get('/api/sessions/:id/export', async (request, response, next) => {
+  try {
+    const session = await resolveSession(request.params.id)
+    if (!session) {
+      response.status(404).json({ error: 'Session not found' })
+      return
+    }
+    const live = liveMonitor.snapshot().agents.find((item) => item.id === session.id)
+    const control = controller.snapshot().sessions.find((item) => item.id === session.id)
+    const markdown = transcriptMarkdown(
+      session,
+      mergeSessionFeed(await sessionReader.transcript(session), live?.feed || [], control?.feed || []),
+    )
+    response.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+    response.setHeader('Content-Disposition', `attachment; filename="${session.id}.md"`)
+    response.send(markdown)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.delete('/api/sessions/:id', async (request, response) => {
+  const session = await resolveSession(request.params.id)
+  if (!session) {
+    response.status(404).json({ error: 'Session not found' })
+    return
+  }
+  try {
+    await deleteGrokSession(session.id, session.cwd)
+    await sessionState.annotate(session.id, { archived: true })
+    store.invalidate()
+    response.json({ deleted: true })
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Unable to delete session.' })
   }
 })
 

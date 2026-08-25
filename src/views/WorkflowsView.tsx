@@ -15,7 +15,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { controlWorkflow } from '../api'
+import { controlWorkflow, runControlCommand } from '../api'
 import { usePrivacy } from '../privacy'
 import type {
   ControlSnapshot,
@@ -110,6 +110,7 @@ export function WorkflowsView({
   const [error, setError] = useState('')
   const [agentQuery, setAgentQuery] = useState('')
   const [agentPage, setAgentPage] = useState(0)
+  const [workflowDraft, setWorkflowDraft] = useState('')
 
   const filtered = useMemo(
     () => runs.filter((run) => matchesFilter(run, filter)),
@@ -203,6 +204,31 @@ export function WorkflowsView({
           </small>
         </div>
       </section>
+
+      {control?.sessions[0] && (
+        <form
+          className="workflow-author section-gap"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const host = selected?.sessionId || control.sessions[0].id
+            void runControlCommand(host, 'create-workflow', workflowDraft)
+              .then(() => {
+                setWorkflowDraft('')
+                return onRefresh()
+              })
+              .catch((authorError: unknown) => {
+                setError(authorError instanceof Error ? authorError.message : 'Unable to author workflow.')
+              })
+          }}
+        >
+          <input
+            value={workflowDraft}
+            onChange={(event) => setWorkflowDraft(event.target.value)}
+            placeholder="Describe a workflow to author in the current session…"
+          />
+          <button type="submit" disabled={!workflowDraft.trim()}>Author workflow</button>
+        </form>
+      )}
 
       {!runs.length ? (
         <section className="workflow-empty section-gap">

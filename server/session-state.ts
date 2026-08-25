@@ -205,6 +205,18 @@ function normalizeControlSession(value: unknown): ControlSession | null {
         .filter((workflow) => workflow && typeof workflow === 'object')
         .map((workflow) => interruptRestoredWorkflow(workflow as WorkflowRun))
       : [],
+    permissionMode: item.permissionMode === 'auto' || item.permissionMode === 'always-approve'
+      ? item.permissionMode
+      : 'ask',
+    planMode: item.planMode === true,
+    worktree: item.worktree === true,
+    parentSessionId: typeof item.parentSessionId === 'string' ? item.parentSessionId : '',
+    currentModeId: typeof item.currentModeId === 'string' ? item.currentModeId : '',
+    availableModes: Array.isArray(item.availableModes) ? item.availableModes : [],
+    availableCommands: Array.isArray(item.availableCommands) ? item.availableCommands : [],
+    plan: item.plan && typeof item.plan === 'object' ? item.plan : null,
+    todos: Array.isArray(item.todos) ? item.todos : [],
+    queue: [],
   }
 }
 

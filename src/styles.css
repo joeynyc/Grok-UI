@@ -956,6 +956,92 @@ kbd {
   white-space: nowrap;
 }
 
+.roster-group {
+  display: grid;
+  gap: 2px;
+}
+
+.roster-group > small {
+  padding: 10px 14px 4px;
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.roster-state {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.roster-state.is-attention { background: var(--coral); }
+.roster-state.is-working { background: var(--lime); }
+.roster-state.is-waiting { background: var(--paper); }
+.roster-state.is-failed { background: var(--coral); }
+
+.roster-peek {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  min-height: 180px;
+}
+
+.roster-peek small {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.roster-reply {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
+.roster-reply textarea,
+.plan-review textarea,
+.workflow-author input {
+  width: 100%;
+  padding: 10px 12px;
+  color: inherit;
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.session-plan-panel,
+.library-inspect,
+.plan-review,
+.session-todos,
+.session-queue,
+.session-commands,
+.workflow-author {
+  display: grid;
+  gap: 10px;
+}
+
+.session-plan-panel {
+  padding: 14px 16px 0;
+}
+
+.plan-actions,
+.session-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-actions button,
+.session-commands button,
+.workflow-author button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .agent-roster-copy small {
   overflow: hidden;
   color: var(--muted-dim);

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Live groups sessions the way Grok’s dashboard does and lets you peek or
+  reply without opening a new room.
+- Session launch can start in plan mode, set Ask/Auto/Always-approve, use a
+  worktree, and pick from `grok models`.
+- Session console reviews ACP plans, shows todos and queued follow-ups, and
+  can compact, rewind, fork, export Markdown, or delete the Grok session.
+- Library inspects the current workspace through `grok inspect`. Runs can
+  author a workflow on the selected session.
 - Overview now holds the two-week activity matrix. Activity stays on the
   hash route and command palette instead of competing in the primary nav.
 - Hidden the dead Start session button while control is offline so first-run

@@ -539,6 +539,16 @@ function safeControlSession(value: unknown): Omit<ControlSession, 'workflows'> |
     feed: Array.isArray(item.feed)
       ? item.feed.slice(-MAX_AGENT_TRANSCRIPT_ITEMS).map(feedItem)
       : [],
+    permissionMode: 'ask',
+    planMode: false,
+    worktree: false,
+    parentSessionId: '',
+    currentModeId: '',
+    availableModes: [],
+    availableCommands: [],
+    plan: null,
+    todos: [],
+    queue: [],
   }
 }
 

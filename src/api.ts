@@ -26,6 +26,10 @@ import type {
   WorkflowControlAction,
   WorkspaceDiff,
   WorkspaceSnapshot,
+  InspectSnapshot,
+  ModelOption,
+  PlanAction,
+  SessionSlash,
 } from './types'
 
 const JSON_RESPONSE_CAP = 5 * 1024 * 1024
@@ -382,12 +386,80 @@ export async function createControlSession(input: {
   prompt: string
   model?: string
   reasoningEffort?: string
+  permissionMode?: string
+  planMode?: boolean
+  worktree?: boolean
 }): Promise<ControlSession> {
   return json(await fetch('/api/control/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   }), 'Unable to create Grok session')
+}
+
+export async function listControlModels(): Promise<ModelOption[]> {
+  const payload = await json<{ models: ModelOption[] }>(
+    await fetch('/api/control/models'),
+    'Unable to list models',
+  )
+  return payload.models || []
+}
+
+export async function reviewControlPlan(
+  sessionId: string,
+  action: PlanAction,
+  note = '',
+): Promise<ControlSession> {
+  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, note }),
+  }), 'Unable to review plan')
+}
+
+export async function runControlCommand(
+  sessionId: string,
+  command: SessionSlash,
+  argument = '',
+): Promise<ControlSession> {
+  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, argument }),
+  }), 'Unable to run session command')
+}
+
+export async function setControlMode(sessionId: string, modeId: string): Promise<ControlSession> {
+  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modeId }),
+  }), 'Unable to set session mode')
+}
+
+export async function inspectWorkspace(cwd: string): Promise<InspectSnapshot> {
+  return json(
+    await fetch(`/api/inspect?cwd=${encodeURIComponent(cwd)}`),
+    'Unable to inspect workspace',
+  )
+}
+
+export async function exportSessionMarkdown(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/export`)
+  if (!response.ok) throw new Error('Unable to export session.')
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${sessionId}.md`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function deleteRecordedSession(sessionId: string): Promise<void> {
+  await json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  }), 'Unable to delete session')
 }
 
 export async function promptControlSession(

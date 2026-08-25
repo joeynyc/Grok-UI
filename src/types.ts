@@ -147,6 +147,58 @@ export interface LiveSnapshot {
 
 export type ControlSessionState = 'starting' | 'idle' | 'working' | 'attention' | 'stopping' | 'cancelled' | 'failed'
 export type ControlCancellationStatus = 'none' | 'requested' | 'confirmed' | 'timed_out' | 'failed'
+export type PermissionMode = 'ask' | 'auto' | 'always-approve'
+export type PlanReviewStatus = 'none' | 'planning' | 'review' | 'approved' | 'changes-requested' | 'quit'
+export type PlanAction = 'approve' | 'request-changes' | 'comment' | 'quit'
+export type SessionSlash = 'compact' | 'rewind' | 'fork' | 'view-plan' | 'create-workflow'
+
+export interface SessionPlanEntry {
+  id: string
+  content: string
+  status: string
+  priority: string
+}
+
+export interface SessionPlan {
+  status: PlanReviewStatus
+  title: string
+  markdown: string
+  entries: SessionPlanEntry[]
+  updatedAt: string
+}
+
+export interface SessionTodo {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+}
+
+export interface QueuedPrompt {
+  id: string
+  text: string
+  createdAt: string
+}
+
+export interface SessionModeOption {
+  id: string
+  name: string
+}
+
+export interface AvailableSessionCommand {
+  name: string
+  description: string
+}
+
+export interface ModelOption {
+  id: string
+  label: string
+}
+
+export interface InspectSnapshot {
+  cwd: string
+  generatedAt: string
+  text: string
+}
 export type WorkflowRunStatus =
   | 'running'
   | 'paused'
@@ -231,6 +283,16 @@ export interface ControlSession {
   costTelemetryAvailable: boolean
   feed: LiveFeedItem[]
   workflows: WorkflowRun[]
+  permissionMode: PermissionMode
+  planMode: boolean
+  worktree: boolean
+  parentSessionId: string
+  currentModeId: string
+  availableModes: SessionModeOption[]
+  availableCommands: AvailableSessionCommand[]
+  plan: SessionPlan | null
+  todos: SessionTodo[]
+  queue: QueuedPrompt[]
 }
 
 export interface ControlPermissionOption {
