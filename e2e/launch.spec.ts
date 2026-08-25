@@ -331,7 +331,7 @@ test.describe.serial('public launch path', () => {
     await page.goto('/')
     await expect(page.getByText('Confidential Launch').first()).toBeVisible()
     await page.getByRole('button', { name: 'Open Session' }).click()
-    await expect(page.getByText(/192\.168\.1\.42/)).toBeVisible()
+    await expect(page.getByText(/192\.168\.1\.42/).first()).toBeVisible()
     await page.getByRole('button', { name: 'Close session console panel' }).click()
 
     await page.getByRole('button', { name: 'Privacy' }).click()
