@@ -21,6 +21,16 @@ if (args[0] === 'models') {
   process.exit(0)
 }
 
+if (args[0] === 'inspect') {
+  console.log('config: e2e\nskills: 1\nplugins: 0\nhooks: 0\nmcp: 0')
+  process.exit(0)
+}
+
+if (args[0] === 'sessions' && args[1] === 'delete') {
+  console.log(`deleted ${args[2] || 'unknown'}`)
+  process.exit(0)
+}
+
 if (args[0] !== 'agent') {
   console.error('Unsupported e2e command.')
   process.exit(1)
@@ -125,6 +135,7 @@ const agent = acp.agent({ name: 'grok-e2e' })
     sessions.add(sessionId)
     return { sessionId }
   })
+  .onRequest(acp.methods.agent.session.setMode, () => ({}))
   .onRequest(acp.methods.agent.session.load, ({ params }) => {
     sessions.add(params.sessionId)
     return {}
@@ -149,6 +160,32 @@ const agent = acp.agent({ name: 'grok-e2e' })
         content: { type: 'text', text: 'E2E agent received the command.' },
       },
     })
+    if (instruction.includes('Draft a plan fixture')) {
+      await client.notify(acp.methods.client.session.update, {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'plan',
+          entries: [
+            { content: 'Inspect the fixture workspace', priority: 'high', status: 'pending' },
+            { content: 'Write the verified change', priority: 'medium', status: 'pending' },
+          ],
+        },
+      })
+      return { stopReason: 'end_turn', usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } }
+    }
+    if (instruction.includes('Approve the current plan')) {
+      await client.notify(acp.methods.client.session.update, {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'plan',
+          entries: [
+            { content: 'Inspect the fixture workspace', priority: 'high', status: 'in_progress' },
+            { content: 'Write the verified change', priority: 'medium', status: 'pending' },
+          ],
+        },
+      })
+      return { stopReason: 'end_turn', usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 } }
+    }
     if (instruction.includes('Start workflow fixture')) {
       await notifyWorkflow(client, params.sessionId, 'failed')
       return {

@@ -51,6 +51,7 @@ import type {
   WorkspaceSnapshot,
 } from '../types'
 import { usePrivacy } from '../privacy'
+import { SessionPlanPanel } from './SessionPlanPanel'
 
 type WorkbenchTab = 'timeline' | 'preview' | 'changes' | 'specs'
 type PreviewViewport = 'desktop' | 'tablet' | 'mobile'
@@ -453,12 +454,21 @@ export function SessionWorkbench({
           {loading && !data ? (
             <div className="workbench-loading"><LoaderCircle size={25} className="is-spinning" /><span>Assembling session record…</span></div>
           ) : tab === 'timeline' ? (
-            <SessionTimeline
-              items={transcript}
-              permissions={data?.permissions || []}
-              feedRef={feedRef}
-              onDecide={decide}
-            />
+            <>
+              {data?.control && (
+                <SessionPlanPanel
+                  session={data.control}
+                  onUpdated={() => refresh(true)}
+                  onDeleted={onClose}
+                />
+              )}
+              <SessionTimeline
+                items={transcript}
+                permissions={data?.permissions || []}
+                feedRef={feedRef}
+                onDecide={decide}
+              />
+            </>
           ) : tab === 'preview' ? (
             <Preview
               preview={preview}

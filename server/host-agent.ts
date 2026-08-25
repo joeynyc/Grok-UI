@@ -381,6 +381,16 @@ export class LocalHostAgentProvider implements HostAgentProvider {
       costCurrency: managed.costCurrency,
       costTelemetryAvailable: managed.costTelemetryAvailable,
       feed: managed.feed.slice(-MAX_AGENT_TRANSCRIPT_ITEMS),
+      permissionMode: managed.permissionMode,
+      planMode: managed.planMode,
+      worktree: managed.worktree,
+      parentSessionId: managed.parentSessionId,
+      currentModeId: managed.currentModeId,
+      availableModes: managed.availableModes,
+      availableCommands: [],
+      plan: managed.plan,
+      todos: managed.todos,
+      queue: [],
     } : null
     return boundedSessionDetail({
       protocolVersion: FLEET_PROTOCOL_VERSION,

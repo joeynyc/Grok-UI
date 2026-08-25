@@ -33,6 +33,16 @@ function session(updatedAt: string, feedItems: number): ControlSession {
       timestamp: updatedAt,
     })),
     workflows: [],
+    permissionMode: 'ask',
+    planMode: false,
+    worktree: false,
+    parentSessionId: '',
+    currentModeId: '',
+    availableModes: [],
+    availableCommands: [],
+    plan: null,
+    todos: [],
+    queue: [],
   }
 }
 

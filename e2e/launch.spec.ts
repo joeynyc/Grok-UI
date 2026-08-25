@@ -228,6 +228,9 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
     await expect(page.getByLabel('WORKSPACE')).toBeVisible()
     await expect(page.getByLabel('INSTRUCTION')).toBeVisible()
+    await expect(page.getByLabel('PERMISSIONS')).toBeVisible()
+    await expect(page.getByLabel('PLAN FIRST')).toBeVisible()
+    await expect(page.getByLabel('WORKTREE')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
     await expect(page).toHaveURL(/#\/live$/)
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })
@@ -328,7 +331,7 @@ test.describe.serial('public launch path', () => {
     await page.goto('/')
     await expect(page.getByText('Confidential Launch').first()).toBeVisible()
     await page.getByRole('button', { name: 'Open Session' }).click()
-    await expect(page.getByText(/192\.168\.1\.42/)).toBeVisible()
+    await expect(page.getByText(/192\.168\.1\.42/).first()).toBeVisible()
     await page.getByRole('button', { name: 'Close session console panel' }).click()
 
     await page.getByRole('button', { name: 'Privacy' }).click()
@@ -371,6 +374,23 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByText('Preview is offline')).toBeVisible()
   })
 
+  test('reviews a Grok plan from the session console', async ({ page }) => {
+    await page.goto('/#/live')
+    const created = await page.request.post('/api/control/sessions', {
+      data: { cwd: workspace, prompt: 'Draft a plan fixture', planMode: true },
+    })
+    expect(created.ok()).toBe(true)
+    const session = await created.json()
+    await page.goto(`/#/live/${session.id}`)
+    await expect(page.getByText('Plan review')).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Approve' }).click()
+    await expect.poll(async () => {
+      const snapshot = await (await page.request.get('/api/control')).json()
+      const row = snapshot.sessions.find((item: { id: string }) => item.id === session.id)
+      return row?.plan?.status
+    }, { timeout: 10_000 }).toBe('planning')
+  })
+
   test('launches and approves a managed ACP control session', async ({ page }, testInfo) => {
     const instruction = `Run the public release verification attempt ${testInfo.repeatEachIndex + 1}-${testInfo.retry + 1}`
     await page.goto('/#/control')
@@ -380,6 +400,7 @@ test.describe.serial('public launch path', () => {
     await page.getByRole('button', { name: 'Start session' }).click()
 
     await expect(page.getByText('New Grok lane launched.')).toBeVisible()
+    await expect(page.locator('.managed-stream').getByRole('heading', { name: instruction })).toBeVisible()
     const lane = page.locator('.lane-card').filter({ hasText: instruction })
     const approval = page.locator('.approval-card').filter({ hasText: 'Write the verified fixture' }).last()
     await expect(approval).toBeVisible()

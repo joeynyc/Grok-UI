@@ -1,12 +1,14 @@
 import { CornerDownLeft, Radio, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { createControlSession, promptControlSession } from '../api'
+import { createControlSession, listControlModels, promptControlSession } from '../api'
 import { usePrivacy } from '../privacy'
 import type {
   ControlSession,
   ControlSnapshot,
   DashboardPayload,
   LiveSnapshot,
+  ModelOption,
+  PermissionMode,
 } from '../types'
 
 export type LaunchMode = 'new' | 'resume'
@@ -82,10 +84,18 @@ export function SessionLaunchForm({
   const [sessionId, setSessionId] = useState('')
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('')
+  const [models, setModels] = useState<ModelOption[]>([])
   const [reasoningEffort, setReasoningEffort] = useState('medium')
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('ask')
+  const [planMode, setPlanMode] = useState(false)
+  const [worktree, setWorktree] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    void listControlModels().then(setModels).catch(() => setModels([]))
+  }, [])
 
   useEffect(() => {
     if (!requestedResumeId) return
@@ -116,7 +126,15 @@ export function SessionLaunchForm({
         await promptControlSession(selected.id, { cwd: selected.cwd, prompt })
         setMessage(`Prompt sent to ${privacy.sessionTitle(selected.title, selected.id)}.`)
       } else {
-        const created = await createControlSession({ cwd, prompt, model, reasoningEffort })
+        const created = await createControlSession({
+          cwd,
+          prompt,
+          model,
+          reasoningEffort,
+          permissionMode,
+          planMode,
+          worktree,
+        })
         setMessage('New Grok lane launched.')
         onLaunched?.(created)
       }
@@ -202,13 +220,38 @@ export function SessionLaunchForm({
           <div className="control-field-row">
             <label className="control-field">
               <span>MODEL <em>optional</em></span>
-              <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Use Grok default" />
+              {models.length ? (
+                <select value={model} onChange={(event) => setModel(event.target.value)}>
+                  <option value="">Use Grok default</option>
+                  {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              ) : (
+                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Use Grok default" />
+              )}
             </label>
             <label className="control-field">
               <span>REASONING</span>
               <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
                 {['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => <option key={effort}>{effort}</option>)}
               </select>
+            </label>
+          </div>
+          <div className="control-field-row">
+            <label className="control-field">
+              <span>PERMISSIONS</span>
+              <select value={permissionMode} onChange={(event) => setPermissionMode(event.target.value as PermissionMode)}>
+                <option value="ask">Ask</option>
+                <option value="auto">Auto</option>
+                <option value="always-approve">Always-approve</option>
+              </select>
+            </label>
+            <label className="control-field launch-toggle">
+              <span>PLAN FIRST</span>
+              <input type="checkbox" checked={planMode} onChange={(event) => setPlanMode(event.target.checked)} />
+            </label>
+            <label className="control-field launch-toggle">
+              <span>WORKTREE</span>
+              <input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} />
             </label>
           </div>
         </>

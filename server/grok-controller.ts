@@ -13,18 +13,24 @@ import type {
   ControlSession,
   ControlSnapshot,
   LiveFeedItem,
+  PermissionMode,
   WorkflowControlAction,
 } from './types.js'
 import { SessionStateStore } from './session-state.js'
 import { APP_VERSION } from './app-version.js'
 import { parseWorkflowNotification, workflowControlCommand } from './workflow-state.js'
+import {
+  launchMeta,
+  parsePermissionMode,
+  planActionPrompt,
+  slashPrompt,
+  type LaunchOptions,
+  type PlanAction,
+  type SessionSlash,
+} from './control-options.js'
+import { applyPlanUpdate, emptyPlan, todosFromPlan } from './plan-projection.js'
 
-interface NewControlSession {
-  cwd: string
-  prompt: string
-  model?: string
-  reasoningEffort?: string
-}
+interface NewControlSession extends LaunchOptions {}
 
 interface PromptControlSession {
   sessionId: string
@@ -75,6 +81,16 @@ function sessionSeed(id: string, cwd: string, prompt: string, model = ''): Contr
     costTelemetryAvailable: false,
     feed: [],
     workflows: [],
+    permissionMode: 'ask',
+    planMode: false,
+    worktree: false,
+    parentSessionId: '',
+    currentModeId: '',
+    availableModes: [],
+    availableCommands: [],
+    plan: null,
+    todos: [],
+    queue: [],
   }
 }
 
@@ -119,12 +135,13 @@ function feedItem(update: SessionNotification['update']): LiveFeedItem | null {
     }
   }
   if (type === 'plan' || type === 'plan_update') {
+    const projected = applyPlanUpdate(null, update)
     return {
       id: `${timestamp}:${type}:${Math.random()}`,
       type: 'plan',
-      title: 'Plan updated',
-      text: JSON.stringify(update),
-      status: '',
+      title: projected.title || 'Plan updated',
+      text: projected.markdown || projected.entries.map((entry) => `- ${entry.content}`).join('\n'),
+      status: projected.status,
       timestamp,
     }
   }
@@ -243,18 +260,18 @@ export class GrokController extends EventEmitter {
     const cwd = await this.validateCwd(input.cwd)
     await this.start()
     const context = this.context()
+    const meta = launchMeta(input)
     const response = await context.request(acp.methods.agent.session.new, {
       cwd,
       mcpServers: [],
-      _meta: {
-        clientIdentifier: 'grok-ui',
-        modelId: input.model || undefined,
-        reasoningEffort: input.reasoningEffort || undefined,
-        yoloMode: false,
-        autoMode: false,
-      },
-    })
-    const session = sessionSeed(response.sessionId, cwd, input.prompt, input.model)
+      _meta: meta,
+    }) as { sessionId: string }
+    const session = {
+      ...sessionSeed(response.sessionId, cwd, input.prompt, input.model),
+      permissionMode: parsePermissionMode(input.permissionMode),
+      planMode: meta.planMode,
+      worktree: meta.worktree,
+    }
     this.sessions.set(session.id, session)
     this.loadedSessions.add(session.id)
     this.emitSnapshot()
@@ -297,8 +314,77 @@ export class GrokController extends EventEmitter {
     }
     this.sessions.set(session.id, session)
     this.emitSnapshot()
+    if (['working', 'starting', 'attention', 'stopping'].includes(existing.state)) {
+      const queued = [...session.queue, {
+        id: `queue-${Date.now()}`,
+        text: input.prompt,
+        createdAt: now(),
+      }].slice(-20)
+      this.sessions.set(session.id, { ...session, queue: queued, updatedAt: now() })
+      this.emitSnapshot()
+      return this.sessions.get(session.id)!
+    }
     void this.runPrompt(session.id, input.prompt)
     return session
+  }
+
+  async reviewPlan(sessionId: string, action: PlanAction, note = ''): Promise<ControlSession> {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error('Managed session was not found.')
+    if (!session.plan || session.plan.status === 'none') throw new Error('This session has no plan to review.')
+    const prompt = planActionPrompt(action, note)
+    const status = action === 'approve'
+      ? 'approved'
+      : action === 'quit'
+        ? 'quit'
+        : action === 'request-changes'
+          ? 'changes-requested'
+          : session.plan.status
+    this.sessions.set(sessionId, {
+      ...session,
+      plan: { ...session.plan, status, updatedAt: now() },
+      planMode: action !== 'quit',
+      updatedAt: now(),
+    })
+    return this.promptSession({ sessionId, cwd: session.cwd, prompt })
+  }
+
+  async runSlash(sessionId: string, command: SessionSlash, argument = ''): Promise<ControlSession> {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error('Managed session was not found.')
+    return this.promptSession({
+      sessionId,
+      cwd: session.cwd,
+      prompt: slashPrompt(command, argument),
+    })
+  }
+
+  async setSessionMode(sessionId: string, modeId: string): Promise<ControlSession> {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error('Managed session was not found.')
+    if (!modeId.trim()) throw new Error('Mode is required.')
+    await this.start()
+    await this.context().request(acp.methods.agent.session.setMode, {
+      sessionId,
+      modeId,
+    })
+    const permissionMode: PermissionMode = modeId.includes('always') || modeId.includes('yolo')
+      ? 'always-approve'
+      : modeId.includes('auto')
+        ? 'auto'
+        : modeId.includes('plan')
+          ? session.permissionMode
+          : 'ask'
+    const next = {
+      ...session,
+      currentModeId: modeId,
+      permissionMode: modeId.includes('plan') ? session.permissionMode : permissionMode,
+      planMode: modeId.includes('plan') || session.planMode,
+      updatedAt: now(),
+    }
+    this.sessions.set(sessionId, next)
+    this.emitSnapshot()
+    return next
   }
 
   async cancelSession(sessionId: string): Promise<void> {
@@ -603,6 +689,7 @@ export class GrokController extends EventEmitter {
     this.clearCancellationTimer(sessionId)
     const timestamp = now()
     const cancelled = response.stopReason === 'cancelled'
+    const [nextPrompt, ...remaining] = session.queue
     this.sessions.set(sessionId, {
       ...session,
       state: cancelled ? 'cancelled' : 'idle',
@@ -615,8 +702,10 @@ export class GrokController extends EventEmitter {
       outputTokens: response.usage?.outputTokens || session.outputTokens,
       totalTokens: response.usage?.totalTokens || session.totalTokens,
       tokenTelemetryAvailable: Boolean(response.usage) || session.tokenTelemetryAvailable,
+      queue: remaining,
     })
     this.emitSnapshot()
+    if (!cancelled && nextPrompt) void this.runPrompt(sessionId, nextPrompt.text)
   }
 
   private requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -657,6 +746,23 @@ export class GrokController extends EventEmitter {
     let next = { ...session, updatedAt: now() }
     if (update.sessionUpdate === 'session_info_update' && update.title) {
       next.title = update.title
+    }
+    if (update.sessionUpdate === 'plan' || update.sessionUpdate === 'plan_update' || update.sessionUpdate === 'plan_removed') {
+      next.plan = applyPlanUpdate(session.plan || emptyPlan(), update)
+      next.todos = todosFromPlan(next.plan)
+      if (next.plan.status === 'review') next.state = 'attention'
+    }
+    if (update.sessionUpdate === 'current_mode_update' && 'currentModeId' in update) {
+      next.currentModeId = String(update.currentModeId || '')
+      next.planMode = next.currentModeId.includes('plan')
+    }
+    if (update.sessionUpdate === 'available_commands_update' && 'availableCommands' in update) {
+      const commands = Array.isArray(update.availableCommands) ? update.availableCommands : []
+      next.availableCommands = commands.flatMap((command) => {
+        if (!command || typeof command !== 'object') return []
+        const item = command as { name?: string; description?: string }
+        return item.name ? [{ name: item.name, description: item.description || '' }] : []
+      })
     }
     if (update.sessionUpdate === 'usage_update') {
       next.costAmount = update.cost?.amount || next.costAmount

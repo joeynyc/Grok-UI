@@ -148,6 +148,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
           requestedResumeId={resumeRequest.id}
           resumeToken={resumeRequest.token}
           onRefresh={onRefresh}
+          onLaunched={(session) => setSelectedLane(session.id)}
         />
 
         <aside className="approval-panel">
