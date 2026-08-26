@@ -988,6 +988,19 @@ kbd {
   min-height: 180px;
 }
 
+.roster-approval {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+
+.roster-approval header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
 .roster-peek small {
   display: block;
   color: var(--muted);

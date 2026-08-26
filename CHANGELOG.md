@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Live lets you allow or reject a pending tool from the roster peek,
+  without opening Control.
+
 ## 0.12.1 — 2026-08-26
 
 - A pending permission stays in Needs you instead of flipping back to

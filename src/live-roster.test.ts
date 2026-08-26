@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRoster, groupedRoster } from './live-roster'
+import { buildRoster, groupedRoster, permissionsForSession, shouldShowFirstRun } from './live-roster'
 import type { ControlSnapshot, LiveSnapshot } from './types'
 
 describe('live roster', () => {
@@ -36,5 +36,43 @@ describe('live roster', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].children).toHaveLength(1)
     expect(groupedRoster(rows)[0].id).toBe('working')
+  })
+
+  it('puts a session with a pending permission in Needs input', () => {
+    const rows = buildRoster(null, {
+      sessions: [{
+        id: 'lane',
+        title: 'Lane',
+        cwd: '/repo',
+        state: 'working',
+        parentSessionId: '',
+        feed: [],
+        workflows: [],
+      }],
+      permissions: [{ sessionId: 'lane', title: 'Write the file' }],
+    } as unknown as ControlSnapshot)
+
+    expect(groupedRoster(rows)[0]).toMatchObject({ id: 'attention', label: 'Needs input' })
+    expect(permissionsForSession({
+      permissions: [{ sessionId: 'lane', title: 'Write the file' }, { sessionId: 'other' }],
+    } as ControlSnapshot, 'lane')).toHaveLength(1)
+  })
+
+  it('keeps setup-needed first-run even when leftover managed lanes exist', () => {
+    expect(shouldShowFirstRun({
+      setupReady: false,
+      hasRoster: true,
+      archivedSessions: 0,
+    })).toBe(true)
+    expect(shouldShowFirstRun({
+      setupReady: true,
+      hasRoster: true,
+      archivedSessions: 0,
+    })).toBe(false)
+    expect(shouldShowFirstRun({
+      setupReady: true,
+      hasRoster: false,
+      archivedSessions: 0,
+    })).toBe(true)
   })
 })

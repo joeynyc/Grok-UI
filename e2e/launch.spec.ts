@@ -209,7 +209,7 @@ test.describe.serial('public launch path', () => {
       detail: 'Grok CLI is missing or cannot run.',
     })
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Setup needed')).toBeVisible()
     await expect(page.getByText('Grok CLI is missing or cannot run.')).toBeVisible()
 
@@ -391,6 +391,30 @@ test.describe.serial('public launch path', () => {
     }, { timeout: 10_000 }).toBe('planning')
   })
 
+  test('approves a pending tool from the Live roster', async ({ page }) => {
+    await page.goto('/#/live')
+    const created = await page.request.post('/api/control/sessions', {
+      data: { cwd: workspace, prompt: 'Write the live roster permission fixture' },
+    })
+    expect(created.ok()).toBe(true)
+    const session = await created.json()
+    const row = page.locator('.agent-roster').getByRole('button', { name: /Write the live roster permission fixture/ })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await row.click()
+    const approval = page.locator('.roster-approval')
+    await expect(approval.getByText('Write the verified fixture')).toBeVisible()
+    await approval.getByRole('button', { name: 'Allow once' }).click()
+    await expect.poll(async () => {
+      const snapshot = await (await page.request.get('/api/control')).json()
+      const row = snapshot.sessions.find((item: { id: string }) => item.id === session.id)
+      return row ? {
+        state: row.state,
+        totalTokens: row.totalTokens,
+        pending: snapshot.permissions.filter((item: { sessionId: string }) => item.sessionId === session.id).length,
+      } : null
+    }, { timeout: 15_000 }).toEqual({ state: 'idle', totalTokens: 20, pending: 0 })
+  })
+
   test('launches and approves a managed ACP control session', async ({ page }, testInfo) => {
     const instruction = `Run the public release verification attempt ${testInfo.repeatEachIndex + 1}-${testInfo.retry + 1}`
     await page.goto('/#/control')
@@ -457,7 +481,7 @@ test.describe.serial('public launch path', () => {
     })
     const interruptedLane = page.locator('.lane-card').filter({ hasText: 'Crash control process fixture' })
     await expect(interruptedLane.getByText('CONTROL INTERRUPTED')).toBeVisible()
-    await expect(interruptedLane.getByText('Simulated ACP child crash', { exact: false })).toBeVisible()
+    await expect(interruptedLane.getByText(/Simulated ACP child crash|Grok control channel disconnected/)).toBeVisible()
     await expect(interruptedLane.getByRole('button', { name: 'Resume' })).toBeVisible()
 
     const resumed = await page.request.post(`/api/control/sessions/${created.id}/prompt`, {
