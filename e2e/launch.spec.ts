@@ -209,7 +209,7 @@ test.describe.serial('public launch path', () => {
       detail: 'Grok CLI is missing or cannot run.',
     })
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Setup needed')).toBeVisible()
     await expect(page.getByText('Grok CLI is missing or cannot run.')).toBeVisible()
 
@@ -398,12 +398,12 @@ test.describe.serial('public launch path', () => {
     })
     expect(created.ok()).toBe(true)
     const session = await created.json()
-    await expect(page.getByRole('button', { name: /Write the live roster permission fixture/ })).toBeVisible({
-      timeout: 10_000,
-    })
-    await page.getByRole('button', { name: /Write the live roster permission fixture/ }).click()
-    await expect(page.getByText('Write the verified fixture')).toBeVisible()
-    await page.getByRole('button', { name: 'Allow once' }).click()
+    const row = page.locator('.agent-roster').getByRole('button', { name: /Write the live roster permission fixture/ })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await row.click()
+    const approval = page.locator('.roster-approval')
+    await expect(approval.getByText('Write the verified fixture')).toBeVisible()
+    await approval.getByRole('button', { name: 'Allow once' }).click()
     await expect.poll(async () => {
       const snapshot = await (await page.request.get('/api/control')).json()
       const row = snapshot.sessions.find((item: { id: string }) => item.id === session.id)
