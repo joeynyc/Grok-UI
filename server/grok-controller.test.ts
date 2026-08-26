@@ -167,7 +167,11 @@ describe('GrokController plan review', () => {
       cwd: workspace,
       prompt: 'Write a fixture after plan review',
     })
-    await waitFor(() => controller.snapshot().permissions.some((item) => item.sessionId === followOn.id), 5_000)
+    await waitFor(() => {
+      const row = controller.snapshot().sessions.find((item) => item.id === followOn.id)
+      return row?.state === 'attention'
+        && controller.snapshot().permissions.some((item) => item.sessionId === followOn.id)
+    }, 5_000)
     const permission = controller.snapshot().permissions.find((item) => item.sessionId === followOn.id)
     expect(permission).toBeTruthy()
     controller.resolvePermission(permission!.id, 'allow')

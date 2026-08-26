@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.12.1 — 2026-08-26
+
+- A pending permission stays in Needs you instead of flipping back to
+  Working when a late stream chunk arrives.
+
 ## 0.12.0 — 2026-08-25
 
 - Plan approval answers Grok’s `x.ai/exit_plan_mode` request instead of
