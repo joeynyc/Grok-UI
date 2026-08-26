@@ -66,7 +66,7 @@ import { ControlView } from './views/ControlView'
 import { SessionLaunchForm } from './views/SessionLaunchForm'
 import { LiveRoster } from './views/LiveRoster'
 import { LibraryInspect } from './views/LibraryInspect'
-import { buildRoster } from './live-roster'
+import { buildRoster, shouldShowFirstRun } from './live-roster'
 import { SessionWorkbench } from './views/SessionWorkbench'
 import { RemoteSessionWorkbench } from './views/RemoteSessionWorkbench'
 import { WorkflowsView } from './views/WorkflowsView'
@@ -968,7 +968,11 @@ function LiveView({
         />
       </section>
 
-      {!selected && data.stats.sessions === 0 ? (
+      {shouldShowFirstRun({
+        setupReady: setup?.ready,
+        hasRoster: Boolean(selected),
+        archivedSessions: data.stats.sessions,
+      }) ? (
         <FirstRunOnboarding
           connected={connected}
           setup={setup}

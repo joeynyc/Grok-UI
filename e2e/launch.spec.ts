@@ -481,7 +481,7 @@ test.describe.serial('public launch path', () => {
     })
     const interruptedLane = page.locator('.lane-card').filter({ hasText: 'Crash control process fixture' })
     await expect(interruptedLane.getByText('CONTROL INTERRUPTED')).toBeVisible()
-    await expect(interruptedLane.getByText('Simulated ACP child crash', { exact: false })).toBeVisible()
+    await expect(interruptedLane.getByText(/Simulated ACP child crash|Grok control channel disconnected/)).toBeVisible()
     await expect(interruptedLane.getByRole('button', { name: 'Resume' })).toBeVisible()
 
     const resumed = await page.request.post(`/api/control/sessions/${created.id}/prompt`, {

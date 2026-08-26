@@ -65,6 +65,15 @@ export function permissionsForSession(
   return (control?.permissions || []).filter((permission) => permission.sessionId === sessionId)
 }
 
+export function shouldShowFirstRun(input: {
+  setupReady?: boolean
+  hasRoster: boolean
+  archivedSessions: number
+}) {
+  if (input.setupReady === false) return true
+  return !input.hasRoster && input.archivedSessions === 0
+}
+
 export function groupedRoster(rows: RosterRow[]): Array<{ id: RosterState; label: string; rows: RosterRow[] }> {
   return ROSTER_GROUPS
     .map((group) => ({

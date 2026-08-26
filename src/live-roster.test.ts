@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRoster, groupedRoster, permissionsForSession } from './live-roster'
+import { buildRoster, groupedRoster, permissionsForSession, shouldShowFirstRun } from './live-roster'
 import type { ControlSnapshot, LiveSnapshot } from './types'
 
 describe('live roster', () => {
@@ -56,5 +56,23 @@ describe('live roster', () => {
     expect(permissionsForSession({
       permissions: [{ sessionId: 'lane', title: 'Write the file' }, { sessionId: 'other' }],
     } as ControlSnapshot, 'lane')).toHaveLength(1)
+  })
+
+  it('keeps setup-needed first-run even when leftover managed lanes exist', () => {
+    expect(shouldShowFirstRun({
+      setupReady: false,
+      hasRoster: true,
+      archivedSessions: 0,
+    })).toBe(true)
+    expect(shouldShowFirstRun({
+      setupReady: true,
+      hasRoster: true,
+      archivedSessions: 0,
+    })).toBe(false)
+    expect(shouldShowFirstRun({
+      setupReady: true,
+      hasRoster: false,
+      archivedSessions: 0,
+    })).toBe(true)
   })
 })
