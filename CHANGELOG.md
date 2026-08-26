@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+## 0.12.0 — 2026-08-25
+
+- Plan approval answers Grok’s `x.ai/exit_plan_mode` request instead of
+  sending a fake “approve the plan” chat turn.
+- Session console keeps plan, todos, and the queue up front. Compact,
+  rewind, fork, export, and delete sit under More session actions.
 - Live groups sessions the way Grok’s dashboard does and lets you peek or
   reply without opening a new room.
 - Session launch can start in plan mode, set Ask/Auto/Always-approve, use a
   worktree, and pick from `grok models`.
-- Session console reviews ACP plans, shows todos and queued follow-ups, and
-  can compact, rewind, fork, export Markdown, or delete the Grok session.
+- Session console reviews ACP plans and shows todos and queued follow-ups.
 - Library inspects the current workspace through `grok inspect`. Runs can
   author a workflow on the selected session.
 - Overview now holds the two-week activity matrix. Activity stays on the

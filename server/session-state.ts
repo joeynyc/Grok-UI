@@ -217,6 +217,7 @@ function normalizeControlSession(value: unknown): ControlSession | null {
     plan: item.plan && typeof item.plan === 'object' ? item.plan : null,
     todos: Array.isArray(item.todos) ? item.todos : [],
     queue: [],
+    awaitingPlanApproval: false,
   }
 }
 

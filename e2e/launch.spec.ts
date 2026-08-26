@@ -382,7 +382,7 @@ test.describe.serial('public launch path', () => {
     expect(created.ok()).toBe(true)
     const session = await created.json()
     await page.goto(`/#/live/${session.id}`)
-    await expect(page.getByText('Plan review')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Plan approval')).toBeVisible({ timeout: 10_000 })
     await page.getByRole('button', { name: 'Approve' }).click()
     await expect.poll(async () => {
       const snapshot = await (await page.request.get('/api/control')).json()
@@ -819,6 +819,10 @@ test.describe.serial('public launch path', () => {
     ]) {
       await page.goto(`/#/${section}`)
       expect(await unreadableVisibleText(page), `${section} contains text below 8px`).toEqual([])
+      if (section === 'library') {
+        await page.getByRole('button', { name: 'Inspect this workspace' }).click()
+        await expect(page.getByText('config: e2e')).toBeVisible()
+      }
     }
   })
 })

@@ -391,6 +391,7 @@ export class LocalHostAgentProvider implements HostAgentProvider {
       plan: managed.plan,
       todos: managed.todos,
       queue: [],
+      awaitingPlanApproval: false,
     } : null
     return boundedSessionDetail({
       protocolVersion: FLEET_PROTOCOL_VERSION,

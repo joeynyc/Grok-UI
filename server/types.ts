@@ -292,6 +292,7 @@ export interface ControlSession {
   plan: SessionPlan | null
   todos: SessionTodo[]
   queue: QueuedPrompt[]
+  awaitingPlanApproval: boolean
 }
 
 export interface ControlPermissionOption {

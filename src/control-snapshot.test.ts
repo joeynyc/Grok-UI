@@ -43,6 +43,7 @@ function session(updatedAt: string, feedItems: number): ControlSession {
     plan: null,
     todos: [],
     queue: [],
+    awaitingPlanApproval: false,
   }
 }
 

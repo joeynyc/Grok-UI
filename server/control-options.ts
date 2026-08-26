@@ -43,6 +43,25 @@ export function launchMeta(input: LaunchOptions): SessionMeta {
   }
 }
 
+export type PlanExitVerdict = 'approved' | 'abandoned' | 'rejected'
+
+export function planExitVerdict(action: PlanAction): PlanExitVerdict {
+  if (action === 'approve') return 'approved'
+  if (action === 'quit') return 'abandoned'
+  return 'rejected'
+}
+
+export function parseExitPlanRequest(params: unknown): { sessionId: string; plan: string } {
+  const payload = params && typeof params === 'object' ? params as Record<string, unknown> : {}
+  const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : ''
+  const nested = payload.input && typeof payload.input === 'object'
+    ? payload.input as Record<string, unknown>
+    : {}
+  const plan = [payload.planContent, payload.plan, nested.plan]
+    .find((value) => typeof value === 'string' && value.trim())
+  return { sessionId, plan: typeof plan === 'string' ? plan.slice(0, 20_000) : '' }
+}
+
 export function planActionPrompt(action: PlanAction, note = ''): string {
   const trimmed = note.trim()
   if (action === 'approve') return 'Approve the current plan and start building.'

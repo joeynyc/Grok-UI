@@ -21,9 +21,9 @@ export function SessionPlanPanel({
 }) {
   const privacy = usePrivacy()
   const [note, setNote] = useState('')
-  const [workflow, setWorkflow] = useState('')
   const [error, setError] = useState('')
   const plan = session.plan
+  const reviewing = plan && (plan.status === 'review' || session.awaitingPlanApproval)
 
   const act = async (action: PlanAction) => {
     setError('')
@@ -54,7 +54,7 @@ export function SessionPlanPanel({
           <header>
             <ShieldAlert size={16} />
             <div>
-              <small>Plan {plan.status}</small>
+              <small>{reviewing ? 'Plan approval' : `Plan ${plan.status}`}</small>
               <strong>{privacy.content(plan.title)}</strong>
             </div>
           </header>
@@ -62,11 +62,18 @@ export function SessionPlanPanel({
           {plan.entries.map((entry) => (
             <p key={entry.id}><em>{entry.status}</em> {privacy.content(entry.content)}</p>
           ))}
-          {plan.status === 'review' && (
+          {reviewing && (
             <>
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Request changes or comment…" rows={3} />
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Notes for request changes or a comment…"
+                rows={3}
+              />
               <div className="plan-actions">
-                <button type="button" onClick={() => void act('approve')}><Check size={14} /> Approve</button>
+                <button type="button" onClick={() => void act('approve')}>
+                  <Check size={14} /> Approve
+                </button>
                 <button type="button" onClick={() => void act('request-changes')}>Request changes</button>
                 <button type="button" onClick={() => void act('comment')}>Comment</button>
                 <button type="button" className="is-reject" onClick={() => void act('quit')}>Quit plan</button>
@@ -89,31 +96,35 @@ export function SessionPlanPanel({
           {session.queue.map((item) => <p key={item.id}>{privacy.content(item.text)}</p>)}
         </article>
       )}
-      <div className="session-commands">
-        {session.availableModes.length > 0 && (
-          <label>
-            Mode
-            <select
-              value={session.currentModeId}
-              onChange={(event) => void setControlMode(session.id, event.target.value).then(onUpdated)}
-            >
-              {session.availableModes.map((mode) => <option key={mode.id} value={mode.id}>{mode.name}</option>)}
-            </select>
-          </label>
-        )}
-        <button type="button" onClick={() => void command('compact')}>Compact</button>
-        <button type="button" onClick={() => void command('rewind')}>Rewind</button>
-        <button type="button" onClick={() => void command('fork')}>Fork</button>
-        <button type="button" onClick={() => void exportSessionMarkdown(session.id)}>Export</button>
-        <button type="button" className="is-reject" onClick={() => void deleteRecordedSession(session.id).then(onDeleted)}>Delete</button>
-      </div>
-      <form className="workflow-author" onSubmit={(event) => {
-        event.preventDefault()
-        void command('create-workflow', workflow).then(() => setWorkflow(''))
-      }}>
-        <input value={workflow} onChange={(event) => setWorkflow(event.target.value)} placeholder="Create a workflow…" />
-        <button type="submit">Author</button>
-      </form>
+      <details className="session-more">
+        <summary>More session actions</summary>
+        <div className="session-commands">
+          {session.availableModes.length > 0 && (
+            <label>
+              Mode
+              <select
+                value={session.currentModeId}
+                onChange={(event) => void setControlMode(session.id, event.target.value).then(onUpdated)}
+              >
+                {session.availableModes.map((mode) => (
+                  <option key={mode.id} value={mode.id}>{mode.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button type="button" onClick={() => void command('compact')}>Compact</button>
+          <button type="button" onClick={() => void command('rewind')}>Rewind</button>
+          <button type="button" onClick={() => void command('fork')}>Fork</button>
+          <button type="button" onClick={() => void exportSessionMarkdown(session.id)}>Export</button>
+          <button
+            type="button"
+            className="is-reject"
+            onClick={() => void deleteRecordedSession(session.id).then(onDeleted)}
+          >
+            Delete
+          </button>
+        </div>
+      </details>
     </section>
   )
 }
