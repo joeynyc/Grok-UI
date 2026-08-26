@@ -1,7 +1,7 @@
-import { ArrowRight, ChevronRight, CornerDownLeft } from 'lucide-react'
+import { ArrowRight, Check, ChevronRight, CornerDownLeft, ShieldAlert, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { promptControlSession } from '../api'
-import { buildRoster, groupedRoster } from '../live-roster'
+import { promptControlSession, resolveControlPermission } from '../api'
+import { buildRoster, groupedRoster, permissionsForSession } from '../live-roster'
 import { usePrivacy } from '../privacy'
 import type { ControlSnapshot, LiveSnapshot, SessionRow } from '../types'
 
@@ -10,11 +10,13 @@ export function LiveRoster({
   control,
   sessions,
   onOpenSession,
+  onRefresh,
 }: {
   live: LiveSnapshot | null
   control: ControlSnapshot | null
   sessions: SessionRow[]
   onOpenSession: (session: SessionRow | string) => void
+  onRefresh: () => Promise<void>
 }) {
   const privacy = usePrivacy()
   const roots = useMemo(() => buildRoster(live, control), [control, live])
@@ -22,6 +24,7 @@ export function LiveRoster({
   const flat = useMemo(() => groups.flatMap((group) => group.rows), [groups])
   const [selectedId, setSelectedId] = useState(flat[0]?.id || '')
   const selected = flat.find((row) => row.id === selectedId) || flat[0]
+  const pending = selected ? permissionsForSession(control, selected.id) : []
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +40,16 @@ export function LiveRoster({
   const open = (id: string) => {
     const session = sessions.find((item) => item.id === id)
     onOpenSession(session || id)
+  }
+
+  const decide = async (permissionId: string, optionId?: string) => {
+    setError('')
+    try {
+      await resolveControlPermission(permissionId, optionId)
+      await onRefresh()
+    } catch (decisionError) {
+      setError(decisionError instanceof Error ? decisionError.message : 'Unable to resolve permission.')
+    }
   }
 
   const send = async (event: FormEvent) => {
@@ -105,12 +118,39 @@ export function LiveRoster({
               </div>
             </header>
             <div className="roster-peek">
+              {pending.map((permission) => (
+                <article className="roster-approval" key={permission.id}>
+                  <header>
+                    <ShieldAlert size={16} />
+                    <div>
+                      <small>Needs you</small>
+                      <strong>{privacy.content(permission.title)}</strong>
+                    </div>
+                  </header>
+                  <div className="approval-options">
+                    {permission.options.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={option.kind.includes('reject') ? 'is-reject' : ''}
+                        onClick={() => void decide(permission.id, option.id)}
+                      >
+                        {option.kind.includes('reject') ? <X size={14} /> : <Check size={14} />}
+                        {option.name}
+                      </button>
+                    ))}
+                    <button type="button" className="is-reject" onClick={() => void decide(permission.id)}>
+                      Reject
+                    </button>
+                  </div>
+                </article>
+              ))}
               {selected.peek.length ? selected.peek.map((item) => (
                 <p key={item.id}>
                   <small>{item.type}</small>
                   {privacy.content(item.text || item.title)}
                 </p>
-              )) : <p>No recent activity to peek yet.</p>}
+              )) : pending.length === 0 ? <p>No recent activity to peek yet.</p> : null}
             </div>
             {error && <p className="launch-form-status is-error" role="alert">{privacy.content(error)}</p>}
             <form className="roster-reply" onSubmit={(event) => void send(event)}>

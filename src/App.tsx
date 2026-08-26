@@ -1001,6 +1001,7 @@ function LiveView({
           control={control}
           sessions={data.sessions}
           onOpenSession={onOpenSession}
+          onRefresh={onRefreshControl}
         />
       )}
       <RuntimeIntelligencePanels runtime={runtime} />

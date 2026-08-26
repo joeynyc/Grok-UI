@@ -42,10 +42,12 @@ export function buildRoster(
       existing.source = 'managed'
       existing.parentId = existing.parentId || session.parentSessionId
       if (session.feed.length) existing.peek = session.feed.slice(-4)
-      if (session.state === 'attention' || session.state === 'failed') existing.state = session.state
+      if (session.state === 'attention' || session.state === 'failed' || pendingApproval(control, session.id)) {
+        existing.state = session.state === 'failed' ? 'failed' : 'attention'
+      }
       continue
     }
-    rows.set(session.id, fromManaged(session))
+    rows.set(session.id, fromManaged(session, control))
   }
   const roots: RosterRow[] = []
   for (const row of rows.values()) {
@@ -54,6 +56,13 @@ export function buildRoster(
     else roots.push(row)
   }
   return roots.sort(byAttention)
+}
+
+export function permissionsForSession(
+  control: ControlSnapshot | null,
+  sessionId: string,
+) {
+  return (control?.permissions || []).filter((permission) => permission.sessionId === sessionId)
 }
 
 export function groupedRoster(rows: RosterRow[]): Array<{ id: RosterState; label: string; rows: RosterRow[] }> {
@@ -79,13 +88,17 @@ function fromLive(agent: LiveAgent): RosterRow {
   }
 }
 
-function fromManaged(session: ControlSession): RosterRow {
-  const state: RosterState = session.state === 'attention'
-    ? 'attention'
-    : session.state === 'working' || session.state === 'starting' || session.state === 'stopping'
-      ? 'working'
-      : session.state === 'failed'
-        ? 'failed'
+function pendingApproval(control: ControlSnapshot | null | undefined, sessionId: string): boolean {
+  return Boolean(control?.permissions.some((permission) => permission.sessionId === sessionId))
+}
+
+function fromManaged(session: ControlSession, control: ControlSnapshot | null): RosterRow {
+  const state: RosterState = session.state === 'failed'
+    ? 'failed'
+    : session.state === 'attention' || pendingApproval(control, session.id)
+      ? 'attention'
+      : session.state === 'working' || session.state === 'starting' || session.state === 'stopping'
+        ? 'working'
         : 'idle'
   return {
     id: session.id,

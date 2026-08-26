@@ -391,6 +391,30 @@ test.describe.serial('public launch path', () => {
     }, { timeout: 10_000 }).toBe('planning')
   })
 
+  test('approves a pending tool from the Live roster', async ({ page }) => {
+    await page.goto('/#/live')
+    const created = await page.request.post('/api/control/sessions', {
+      data: { cwd: workspace, prompt: 'Write the live roster permission fixture' },
+    })
+    expect(created.ok()).toBe(true)
+    const session = await created.json()
+    await expect(page.getByRole('button', { name: /Write the live roster permission fixture/ })).toBeVisible({
+      timeout: 10_000,
+    })
+    await page.getByRole('button', { name: /Write the live roster permission fixture/ }).click()
+    await expect(page.getByText('Write the verified fixture')).toBeVisible()
+    await page.getByRole('button', { name: 'Allow once' }).click()
+    await expect.poll(async () => {
+      const snapshot = await (await page.request.get('/api/control')).json()
+      const row = snapshot.sessions.find((item: { id: string }) => item.id === session.id)
+      return row ? {
+        state: row.state,
+        totalTokens: row.totalTokens,
+        pending: snapshot.permissions.filter((item: { sessionId: string }) => item.sessionId === session.id).length,
+      } : null
+    }, { timeout: 15_000 }).toEqual({ state: 'idle', totalTokens: 20, pending: 0 })
+  })
+
   test('launches and approves a managed ACP control session', async ({ page }, testInfo) => {
     const instruction = `Run the public release verification attempt ${testInfo.repeatEachIndex + 1}-${testInfo.retry + 1}`
     await page.goto('/#/control')
