@@ -839,7 +839,7 @@ export class GrokController extends EventEmitter {
     if (
       (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'agent_message_chunk')
       && next.cancellationStatus === 'none'
-      && ['starting', 'working', 'attention', 'stopping'].includes(next.state)
+      && ['starting', 'working', 'stopping'].includes(next.state)
     ) {
       next.state = 'working'
     }

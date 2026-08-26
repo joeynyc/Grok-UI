@@ -592,7 +592,7 @@ test.describe.serial('public launch path', () => {
     await page.getByRole('button', { name: 'Start session' }).click()
 
     const lane = page.locator('.lane-card').filter({ hasText: 'Hold for permission cancellation' })
-    await expect(lane.locator('.lane-state')).toContainText('attention')
+    await expect(lane.locator('.lane-state')).toContainText('attention', { timeout: 10_000 })
     await lane.getByRole('button', { name: 'Stop', exact: true }).click()
 
     await expect(lane.locator('.lane-state')).toContainText('cancelled')
