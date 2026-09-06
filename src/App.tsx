@@ -198,6 +198,7 @@ function liveSessionStatus(session: SessionRow, live: LiveSnapshot | null): Sess
 function App() {
   const initialRoute = parseHash(window.location.hash)
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
+  const [authCheckError, setAuthCheckError] = useState('')
   const [view, setView] = useState<ViewId>(initialRoute.view)
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [live, setLive] = useState<LiveSnapshot | null>(null)
@@ -293,11 +294,22 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
+  const checkAuth = useCallback(() => {
+    setAuthCheckError('')
+    setAuthenticated(null)
     void getAuthStatus()
       .then((status) => setAuthenticated(status.authenticated))
-      .catch(() => setAuthenticated(false))
+      .catch((checkError) => {
+        // A failed status request means the local API is unreachable, not
+        // that a token is required. Show a retry instead of the sign-in gate.
+        console.warn('Grok UI server unreachable:', checkError)
+        setAuthCheckError(checkError instanceof Error ? checkError.message : 'Authentication check failed')
+      })
   }, [])
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   useEffect(() => {
     if (!authenticated) return
@@ -475,6 +487,18 @@ function App() {
       : { id: session.id, fallback: session, opener })
   }, [data?.sessions, takeInteractionTarget])
 
+  if (authCheckError) {
+    return (
+      <main className="access-screen">
+        <AmbientGrid />
+        <ErrorState
+          message="The Grok UI server did not respond. Start it with grok-ui or npm start, then try again."
+
+          onRetry={checkAuth}
+        />
+      </main>
+    )
+  }
   if (authenticated === null) return <BootScreen label="SECURING LOCAL LINK" />
   if (!authenticated) return <AuthScreen onAuthenticated={() => setAuthenticated(true)} />
 
@@ -944,8 +968,8 @@ function LiveView({
       <section className="live-summary-strip">
         <LiveSummaryMetric
           label="Open agents"
-          value={String(live?.activeCount || 0)}
-          detail="registered Grok processes"
+          value={String(roster.length)}
+          detail={live?.activeCount ? `${live.activeCount} Grok process${live.activeCount === 1 ? '' : 'es'}` : 'live and managed sessions'}
           tone="lime"
         />
         <LiveSummaryMetric

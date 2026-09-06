@@ -18,6 +18,8 @@ import type {
 } from '../types'
 import { usePrivacy } from '../privacy'
 
+const REPOSITORY_PROBE_LIMIT = 6
+
 interface ChangesViewProps {
   data: DashboardPayload
   live: LiveSnapshot | null
@@ -46,7 +48,9 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
     try {
       let payload = await getWorkspaceSnapshot(workspace)
       if (!payload.repository && workspace === workspaces[0]) {
-        for (const candidate of workspaces.slice(1)) {
+        // Probe only a handful of recent workspaces for a repository; each
+        // probe starts a Git status read on the server.
+        for (const candidate of workspaces.slice(1, 1 + REPOSITORY_PROBE_LIMIT)) {
           const candidatePayload = await getWorkspaceSnapshot(candidate)
           if (candidatePayload.repository) {
             setCwd(candidate)
@@ -88,6 +92,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
   }
 
   const files = snapshot?.files.filter((file) => file.path.toLowerCase().includes(query.toLowerCase())) || []
+  const watching = snapshot ? snapshot.watching !== false && snapshot.repository : true
 
   return (
     <>
@@ -109,9 +114,12 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
             ))}
           </select>
         </label>
-        <span className={`workspace-live-state ${connected ? 'is-connected' : ''}`}>
-          <span className={`status-dot ${connected ? 'is-live' : ''}`} />
-          {connected ? 'LIVE WATCH' : 'RECONNECTING'}
+        <span
+          className={`workspace-live-state ${connected && watching ? 'is-connected' : ''}`}
+          title={!connected ? 'The event stream is reconnecting.' : watching ? 'Changes update automatically as files change.' : 'Live file watching is unavailable for this workspace. Use Refresh to update.'}
+        >
+          <span className={`status-dot ${connected && watching ? 'is-live' : ''}`} />
+          {!connected ? 'RECONNECTING' : watching ? 'LIVE WATCH' : 'MANUAL REFRESH'}
         </span>
         <button className="icon-button" onClick={() => void loadWorkspace()} aria-label="Refresh changes">
           <RefreshCw size={17} className={loading ? 'is-spinning' : ''} />
@@ -149,10 +157,12 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
             {!files.length && (
               <p className="files-empty">
                 {snapshot?.repository
-                  ? 'Working tree clean.'
-                  : snapshot?.error
-                    ? privacy.content(snapshot.error)
-                    : 'No workspace selected.'}
+                  ? (query ? 'No changed files match this filter.' : 'Working tree clean.')
+                  : snapshot
+                    ? privacy.content(snapshot.error || 'This workspace is not a Git repository.')
+                    : workspaces.length
+                      ? 'Reading workspace…'
+                      : 'No workspace yet. Start a Grok session in a repository to inspect its changes here.'}
               </p>
             )}
           </div>

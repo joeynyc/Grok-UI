@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRoster, groupedRoster, permissionsForSession, shouldShowFirstRun } from './live-roster'
+import { buildRoster, groupedRoster, peekText, permissionsForSession, shouldShowFirstRun } from './live-roster'
 import type { ControlSnapshot, LiveSnapshot } from './types'
 
 describe('live roster', () => {
@@ -74,5 +74,20 @@ describe('live roster', () => {
       hasRoster: false,
       archivedSessions: 0,
     })).toBe(true)
+  })
+})
+
+describe('peekText', () => {
+  it('flattens Markdown into prose for the roster peek', () => {
+    const input = '## Summary\n\n**Branch:** `main` - working tree *clean*.\n\n| Commit | Message |\n|---|---|\n| `0c3e7ef` | control: confirm |\n\n- run `git pull --rebase`\n- then push'
+    expect(peekText(input)).toBe(
+      'Summary Branch: main - working tree clean. Commit · Message 0c3e7ef · control: confirm run git pull --rebase then push',
+    )
+  })
+
+  it('keeps plain text and bounds the length', () => {
+    expect(peekText('Hello there')).toBe('Hello there')
+    expect(peekText('x'.repeat(500), 40)).toHaveLength(40)
+    expect(peekText('x'.repeat(500), 40).endsWith('…')).toBe(true)
   })
 })
