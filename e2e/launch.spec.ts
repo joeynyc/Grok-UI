@@ -309,7 +309,7 @@ test.describe.serial('public launch path', () => {
     const dialog = page.getByRole('dialog', { name: /Session console:/ })
     await expect(dialog).toBeVisible()
     await expect(page.getByText(/^Session · /)).toBeVisible()
-    await expect(page.getByText('Chat with this agent, review its activity, and inspect changes.')).toBeVisible()
+    await expect(dialog.getByLabel('Session context')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Session console sections' })).toBeVisible()
     const prompt = page.getByPlaceholder('Send a follow-up to this session…')
     const closeButton = page.getByRole('button', { name: 'Close session console panel' })

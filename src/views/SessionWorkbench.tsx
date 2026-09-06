@@ -50,6 +50,7 @@ import type {
   WorkspaceDiff,
   WorkspaceSnapshot,
 } from '../types'
+import { Markdown, renderInline } from '../markdown'
 import { usePrivacy } from '../privacy'
 import { SessionPlanPanel } from './SessionPlanPanel'
 
@@ -84,6 +85,28 @@ function elapsed(value: string): string {
   if (difference < 3_600_000) return `${Math.floor(difference / 60_000)}m`
   if (difference < 86_400_000) return `${Math.floor(difference / 3_600_000)}h`
   return `${Math.floor(difference / 86_400_000)}d`
+}
+
+function startedLabel(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  const sameYear = date.getFullYear() === new Date().getFullYear()
+  return date.toLocaleDateString('en-US', sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/**
+ * Messages longer than this start collapsed so a pasted wall of text does not
+ * bury the conversation. Grok's own replies get more room because they are
+ * what the reader came for.
+ */
+const COLLAPSE = {
+  user: { chars: 900, lines: 12 },
+  assistant: { chars: 3_500, lines: 45 },
+} as const
+
+function isLong(text: string, type: LiveFeedItem['type']): boolean {
+  const limit = type === 'assistant' || type === 'plan' ? COLLAPSE.assistant : COLLAPSE.user
+  return text.length > limit.chars || text.split('\n').length > limit.lines
 }
 
 function statusLabel(data: SessionWorkbenchData | null): string {
@@ -219,10 +242,17 @@ export function SessionWorkbench({
     return () => window.clearInterval(timer)
   }, [refreshPreview, tab])
 
+  const latestEventId = data?.transcript.at(-1)?.id
   useEffect(() => {
-    if (!feedRef.current) return
-    feedRef.current.scrollTop = feedRef.current.scrollHeight
-  }, [data?.transcript.at(-1)?.id])
+    if (!latestEventId) return
+    // Wait one frame so collapsed bodies and rendered Markdown have their final height.
+    const frame = window.requestAnimationFrame(() => {
+      // Instant, not smooth: a smooth scroll is cancelled by the re-render that
+      // shows the Latest button part-way through the animation.
+      feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'instant' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [latestEventId, tab])
 
   const openDiff = async (file: string) => {
     const cwd = data?.session.cwd || fallback?.cwd
@@ -381,7 +411,11 @@ export function SessionWorkbench({
               <div className="workbench-title">
                 <div>
                   <span>Session · {privacy.identifier(sessionId)}</span>
-                  <h1>{privacy.sessionTitle(session?.title || `Session ${sessionId.slice(0, 8)}`, sessionId)}</h1>
+                  <h1>
+                    {session?.title
+                      ? privacy.sessionTitle(session.title, sessionId)
+                      : loading ? 'Loading session…' : privacy.sessionTitle(`Session ${sessionId.slice(0, 8)}`, sessionId)}
+                  </h1>
                 </div>
                 <button onClick={() => setRenaming(true)} aria-label="Rename session"><Pencil size={15} /></button>
               </div>
@@ -389,9 +423,15 @@ export function SessionWorkbench({
             <div className="workbench-context">
               <p>
                 <FolderGit2 size={14} />
-                <span>{session?.cwd ? privacy.path(session.cwd) : 'Resolving workspace…'}</span>
+                <span>{session?.cwd ? privacy.path(session.cwd) : loading ? 'Resolving workspace…' : 'No workspace recorded'}</span>
               </p>
-              <span>Chat with this agent, review its activity, and inspect changes.</span>
+              <span aria-label="Session context">
+                {[
+                  session?.model,
+                  session?.agent ? privacy.capability(session.agent, 'Agent') : '',
+                  session?.createdAt ? `Started ${startedLabel(session.createdAt)}` : '',
+                ].filter(Boolean).join(' · ') || (loading ? 'Reading session record…' : 'Chat with this agent, review its activity, and inspect changes.')}
+              </span>
             </div>
           </div>
           <div className="workbench-head-actions">
@@ -418,7 +458,7 @@ export function SessionWorkbench({
         </header>
 
         <div className="workbench-instruments">
-          <div><span>STATUS</span><strong>{statusLabel(data)}</strong></div>
+          <div><span>MODEL</span><strong className="is-text">{session?.model || '—'}</strong></div>
           <div><span>TURNS</span><strong>{compact(session?.turns || turnCount)}</strong></div>
           <div><span>TOOLS</span><strong>{compact(session?.toolCalls || toolCount)}</strong></div>
           <div><span>CONTEXT</span><strong>{Math.round((data?.live?.contextUsage || session?.contextUsage || 0) * 100)}%</strong></div>
@@ -667,8 +707,16 @@ export function SessionTimeline({
   onDecide: (permissionId: string, optionId?: string) => Promise<void>
 }) {
   const privacy = usePrivacy()
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [atBottom, setAtBottom] = useState(true)
+  const toggle = (id: string) => setExpanded((current) => ({ ...current, [id]: !current[id] }))
+  const onScroll = () => {
+    const element = feedRef.current
+    if (!element) return
+    setAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < 48)
+  }
   return (
-    <div className="workbench-timeline" ref={feedRef}>
+    <div className="workbench-timeline" ref={feedRef} onScroll={onScroll}>
       {permissions.map((permission) => (
         <article className="workbench-permission" key={permission.id}>
           <div><ShieldAlert size={18} /><span><small>PERMISSION REQUIRED</small><strong>{privacy.content(permission.title)}</strong></span></div>
@@ -695,11 +743,19 @@ export function SessionTimeline({
           <div className="workbench-event-content">
             <header>
               <span>{item.type === 'assistant' ? 'GROK' : item.type.toUpperCase()}</span>
-              <strong>{privacy.content(item.title)}</strong>
+              <strong title={privacy.content(item.title)}>{renderInline(privacy.content(item.title))}</strong>
               {item.status && <em>{item.status}</em>}
               <time>{time(item.timestamp)}</time>
             </header>
-            {item.text && <p>{privacy.content(item.text)}</p>}
+            {item.text && (
+              <EventBody
+                item={item}
+                text={privacy.content(item.text)}
+                expanded={Boolean(expanded[item.id])}
+                pinned={index === items.length - 1}
+                onToggle={() => toggle(item.id)}
+              />
+            )}
           </div>
         </article>
       )) : (
@@ -709,7 +765,44 @@ export function SessionTimeline({
           <p>Send a follow-up below. New messages, reasoning, and tool calls will stream here.</p>
         </div>
       )}
-      {items.length > 8 && <button className="jump-latest" onClick={() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })}><ArrowDown size={14} /> Latest</button>}
+      {items.length > 8 && !atBottom && (
+        <button className="jump-latest" onClick={() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })}>
+          <ArrowDown size={14} /> Latest
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EventBody({
+  item,
+  text,
+  expanded,
+  pinned = false,
+  onToggle,
+}: {
+  item: LiveFeedItem
+  text: string
+  expanded: boolean
+  /** The newest event always shows in full; it is what the reader came to see. */
+  pinned?: boolean
+  onToggle: () => void
+}) {
+  const long = isLong(text, item.type) && !pinned
+  const collapsed = long && !expanded
+  const lineCount = text.split('\n').length
+  const body = item.type === 'assistant' || item.type === 'plan'
+    ? <Markdown className="workbench-event-body" text={text} />
+    : <p className="workbench-event-body">{text}</p>
+  return (
+    <div className={`workbench-event-text ${collapsed ? 'is-collapsed' : ''}`}>
+      {body}
+      {long && (
+        <button type="button" className="event-collapse" onClick={onToggle} aria-expanded={!collapsed}>
+          {collapsed ? <ChevronRight size={13} /> : <ArrowDown size={13} className="is-flipped" />}
+          {collapsed ? `Show all ${lineCount} lines` : 'Collapse'}
+        </button>
+      )}
     </div>
   )
 }
