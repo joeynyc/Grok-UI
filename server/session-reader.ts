@@ -61,7 +61,9 @@ function boundedText(value: string): string {
   return `${value.slice(0, MAX_ITEM_TEXT)}\n\n[content truncated by Grok UI]`
 }
 
-function updateItem(line: string, index: number, fallback: string): LiveFeedItem | null {
+type DiskFeedItem = LiveFeedItem & { toolCallId?: string }
+
+function updateItem(line: string, index: number, fallback: string): DiskFeedItem | null {
   let record: Json
   try {
     record = object(JSON.parse(line))
@@ -92,13 +94,15 @@ function updateItem(line: string, index: number, fallback: string): LiveFeedItem
     }
   }
   if (kind === 'tool_call' || kind === 'tool_call_update') {
+    const toolCallId = string(update.toolCallId)
     return {
       ...base,
-      id: `disk:${string(update.toolCallId) || index}:${at}:${kind}`,
+      id: `disk:${toolCallId || index}:${at}:${kind}`,
       type: 'tool',
       title: string(update.title) || (kind === 'tool_call' ? 'Tool call' : 'Tool update'),
       text: '',
       status: string(update.status) || (kind === 'tool_call' ? 'pending' : ''),
+      toolCallId: toolCallId || undefined,
     }
   }
   if (kind === 'plan' || kind === 'plan_update') {
@@ -134,8 +138,9 @@ function historyItem(line: string, index: number, fallback: string): LiveFeedIte
   return null
 }
 
-function coalesce(items: LiveFeedItem[]): LiveFeedItem[] {
+function coalesce(items: DiskFeedItem[]): LiveFeedItem[] {
   const output: LiveFeedItem[] = []
+  const toolRows = new Map<string, LiveFeedItem>()
   for (const item of items) {
     const previous = output.at(-1)
     if (
@@ -148,7 +153,21 @@ function coalesce(items: LiveFeedItem[]): LiveFeedItem[] {
       previous.timestamp = item.timestamp
       continue
     }
-    output.push({ ...item })
+    const { toolCallId, ...row } = item
+    if (item.type === 'tool' && toolCallId) {
+      // Grok emits one tool_call followed by several tool_call_update records
+      // for the same call. Show a single row that carries the most descriptive
+      // title Grok has provided so far and the latest status.
+      const existing = toolRows.get(toolCallId)
+      if (existing) {
+        if (row.title && row.title !== 'Tool update') existing.title = row.title
+        if (row.status) existing.status = row.status
+        existing.timestamp = row.timestamp
+        continue
+      }
+      toolRows.set(toolCallId, row)
+    }
+    output.push(row)
   }
   return output.slice(-MAX_ITEMS)
 }
@@ -199,9 +218,17 @@ export class SessionReader {
   }
 }
 
+/** Labels written by earlier Grok UI versions, kept readable for sessions persisted before the rename. */
+const LEGACY_TITLES: Record<string, string> = {
+  'user message chunk': 'User message',
+  'agent message chunk': 'Grok response',
+  'agent thought chunk': 'Reasoning',
+}
+
 export function mergeSessionFeed(...feeds: LiveFeedItem[][]): LiveFeedItem[] {
   const seen = new Set<string>()
   return feeds.flat()
+    .map((item) => LEGACY_TITLES[item.title] ? { ...item, title: LEGACY_TITLES[item.title] } : item)
     .filter((item) => {
       const key = item.text
         ? `${item.type}\u0000${item.text.trim()}`

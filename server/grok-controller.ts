@@ -117,29 +117,21 @@ function feedItem(update: SessionNotification['update']): LiveFeedItem | null {
     return {
       id: `${timestamp}:${type}:${Math.random()}`,
       type: type === 'user_message_chunk' ? 'user' : type === 'agent_message_chunk' ? 'assistant' : 'thought',
-      title: type.replaceAll('_', ' '),
+      // Match the labels the on-disk transcript reader uses so live and recorded rows read the same.
+      title: type === 'user_message_chunk' ? 'User message' : type === 'agent_message_chunk' ? 'Grok response' : 'Reasoning',
       text: blockText(update.content),
       status: '',
       timestamp,
     }
   }
-  if (type === 'tool_call') {
+  if (type === 'tool_call' || type === 'tool_call_update') {
+    // One stable id per tool call so later updates replace the row instead of adding one.
     return {
-      id: `${timestamp}:${update.toolCallId}`,
+      id: `tool:${update.toolCallId}`,
       type: 'tool',
-      title: update.title,
+      title: update.title || (type === 'tool_call' ? 'Tool call' : 'Tool update'),
       text: '',
-      status: update.status || 'pending',
-      timestamp,
-    }
-  }
-  if (type === 'tool_call_update') {
-    return {
-      id: `${timestamp}:${update.toolCallId}:${Math.random()}`,
-      type: 'tool',
-      title: update.title || 'Tool update',
-      text: '',
-      status: update.status || '',
+      status: update.status || (type === 'tool_call' ? 'pending' : ''),
       timestamp,
     }
   }
@@ -864,7 +856,16 @@ export class GrokController extends EventEmitter {
         return
       }
       const previous = next.feed.at(-1)
-      if (
+      const existingTool = item.type === 'tool' ? next.feed.find((existing) => existing.id === item.id) : undefined
+      if (existingTool) {
+        const merged = item
+        next.feed = next.feed.map((existing) => existing.id !== merged.id ? existing : {
+          ...existing,
+          title: merged.title && merged.title !== 'Tool update' ? merged.title : existing.title,
+          status: merged.status || existing.status,
+          timestamp: merged.timestamp,
+        })
+      } else if (
         previous
         && previous.type === item.type
         && ['user', 'assistant', 'thought'].includes(item.type)
