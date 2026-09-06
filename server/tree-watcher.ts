@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from 'node:fs'
+import { statSync, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 
 export interface TreeWatcherOptions {
@@ -45,6 +45,11 @@ export function watchTree(root: string, options: TreeWatcherOptions): TreeWatche
     }
   }
   try {
+    // Node reports a missing root differently per platform (a synchronous
+    // throw, a later error event, or silence on Linux), so check up front.
+    if (!statSync(root).isDirectory()) {
+      throw Object.assign(new Error(`${root} is not a directory`), { code: 'ENOTDIR' })
+    }
     watcher = watch(root, { recursive: options.recursive !== false, persistent: true }, (_event, filename) => {
       const relative = filename ? path.normalize(String(filename)).split(path.sep).join('/') : ''
       if (relative && ignored.some((pattern) => pattern.test(`/${relative}/`))) return
