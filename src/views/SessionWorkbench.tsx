@@ -77,7 +77,9 @@ function time(value: string): string {
 }
 
 function elapsed(value: string): string {
-  const difference = Math.max(0, Date.now() - new Date(value).getTime())
+  const stamp = new Date(value).getTime()
+  if (!value || Number.isNaN(stamp)) return '—'
+  const difference = Math.max(0, Date.now() - stamp)
   if (difference < 60_000) return 'now'
   if (difference < 3_600_000) return `${Math.floor(difference / 60_000)}m`
   if (difference < 86_400_000) return `${Math.floor(difference / 3_600_000)}h`

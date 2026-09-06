@@ -2,8 +2,8 @@ import { EventEmitter } from 'node:events'
 import { promises as fs } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import path from 'node:path'
-import chokidar, { type FSWatcher } from 'chokidar'
 import type { GrokStore } from './grok-store.js'
+import { describeWatchError, watchTree, type TreeWatcher } from './tree-watcher.js'
 import type {
   LiveAgent,
   LiveAgentState,
@@ -292,7 +292,7 @@ function fallbackSession(record: ActiveSessionRecord): SessionRow {
 }
 
 export class LiveMonitor extends EventEmitter {
-  private watcher: FSWatcher | null = null
+  private watchers: TreeWatcher[] = []
   private refreshTimer: NodeJS.Timeout | null = null
   private dashboardTimer: NodeJS.Timeout | null = null
   private livenessTimer: NodeJS.Timeout | null = null
@@ -311,27 +311,43 @@ export class LiveMonitor extends EventEmitter {
 
   async start(): Promise<void> {
     await this.refresh()
-    this.watcher = chokidar.watch([
-      path.join(this.store.grokHome, 'active_sessions.json'),
-      path.join(this.store.grokHome, 'sessions'),
-      path.join(this.store.grokHome, 'memory'),
-      path.join(this.store.grokHome, 'skills'),
-      path.join(this.store.grokHome, 'agents'),
-    ], {
-      ignoreInitial: true,
-      ignored: [
-        /[/\\]terminal[/\\]/,
-        /[/\\]rewind_points/,
-        /[/\\]chat_history/,
-      ],
-    })
-    this.watcher.on('all', (_event, changedPath) => {
+    const onChange = (changedPath: string) => {
       this.scheduleRefresh()
       if (/(summary\.json|signals\.json|active_sessions\.json|MEMORY\.md|SKILL\.md)$/.test(changedPath)) {
         this.scheduleDashboard()
       }
-    })
-    await new Promise<void>((resolve) => this.watcher?.once('ready', () => resolve()))
+    }
+    const treeNames = ['sessions', 'memory', 'skills', 'agents']
+    const watchedTrees = new Set<string>()
+    const watchTreeIfPresent = async (name: string) => {
+      const root = path.join(this.store.grokHome, name)
+      if (watchedTrees.has(root)) return
+      try {
+        if (!(await fs.stat(root)).isDirectory()) return
+      } catch {
+        return
+      }
+      watchedTrees.add(root)
+      this.watchers.push(watchTree(root, {
+        ignored: [/\/terminal\//, /\/rewind_points/, /\/chat_history/],
+        onChange,
+        onError: (error) => this.degrade(root, error),
+      }))
+    }
+    // active_sessions.json lives at the top of the Grok home. Watch the home
+    // directory without recursion so unrelated trees stay untouched, and pick
+    // up state directories that Grok creates later.
+    this.watchers = [
+      watchTree(this.store.grokHome, {
+        recursive: false,
+        onChange: (changedPath) => {
+          if (changedPath === 'active_sessions.json') onChange(changedPath)
+          if (treeNames.includes(changedPath)) void watchTreeIfPresent(changedPath)
+        },
+        onError: (error) => this.degrade(this.store.grokHome, error),
+      }),
+    ]
+    await Promise.all(treeNames.map((name) => watchTreeIfPresent(name)))
     this.livenessTimer = setInterval(() => this.scheduleRefresh(), 2_000)
   }
 
@@ -340,8 +356,15 @@ export class LiveMonitor extends EventEmitter {
     if (this.dashboardTimer) clearTimeout(this.dashboardTimer)
     if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.livenessTimer = null
-    await this.watcher?.close()
-    this.watcher = null
+    this.watchers.forEach((watcher) => watcher.close())
+    this.watchers = []
+  }
+
+  private degrade(root: string, error: unknown): void {
+    // Watching a large Grok home can fail (EMFILE, ENOSPC). An unhandled
+    // watcher error would crash the supervisor, so warn once and rely on the
+    // 2s liveness poll for that tree instead.
+    console.warn(`Live monitor file watching degraded to polling for ${root}: ${describeWatchError(error)}`)
   }
 
   snapshot(): LiveSnapshot {

@@ -83,6 +83,30 @@ export function groupedRoster(rows: RosterRow[]): Array<{ id: RosterState; label
     .filter((group) => group.rows.length > 0)
 }
 
+/**
+ * Flatten Markdown from an assistant message into plain prose for the small
+ * roster peek, which has no room to render it.
+ */
+export function peekText(input: string, limit = 360): string {
+  let text = input
+    .replace(/```[a-z]*\n?([\s\S]*?)```/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/(^|\s)[*_]([^*_\n]+)[*_](?=\s|$|[.,;:!?])/g, '$1$2')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, '')
+    .replace(/^[ \t]*\|[ \t]*|[ \t]*\|[ \t]*$/gm, '')
+    .replace(/\s*\|\s*/g, ' · ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .trim()
+  if (text.length > limit) text = `${text.slice(0, limit - 1).trimEnd()}…`
+  return text
+}
+
 function fromLive(agent: LiveAgent): RosterRow {
   return {
     id: agent.id,

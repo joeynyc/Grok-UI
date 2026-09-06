@@ -4,6 +4,24 @@
 
 - Live lets you allow or reject a pending tool from the roster peek,
   without opening Control.
+- File watching uses Node's native recursive `fs.watch` instead of one
+  descriptor per directory, so a large Grok home or repository no longer
+  exhausts file descriptors (`EMFILE`) and crashes the supervisor. A watcher
+  that still fails is closed and reported: the Live monitor falls back to its
+  liveness poll, and Changes shows Manual refresh for that workspace. Only
+  the three most recent workspaces stay watched and common build and cache
+  directories are ignored. `chokidar` is no longer a dependency.
+- An unreachable server shows a Link interrupted screen with Try again
+  instead of the remote access token gate.
+- Live roster titles and workspaces are readable again; the roster grid still
+  reserved a column for a removed index.
+- Live's Open agents count matches the roster, which includes managed
+  sessions, and the roster peek flattens Markdown into prose.
+- Session console shows an em dash instead of `NaNd` when a session has no
+  update time.
+- Changes explains when a workspace is not a Git repository or when a filter
+  matches nothing, and probes only the six most recent workspaces for a
+  repository.
 
 ## 0.12.1 — 2026-08-26
 

@@ -1,7 +1,7 @@
 import { ArrowRight, Check, ChevronRight, CornerDownLeft, ShieldAlert, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { promptControlSession, resolveControlPermission } from '../api'
-import { buildRoster, groupedRoster, permissionsForSession } from '../live-roster'
+import { buildRoster, groupedRoster, peekText, permissionsForSession } from '../live-roster'
 import { usePrivacy } from '../privacy'
 import type { ControlSnapshot, LiveSnapshot, SessionRow } from '../types'
 
@@ -148,7 +148,7 @@ export function LiveRoster({
               {selected.peek.length ? selected.peek.map((item) => (
                 <p key={item.id}>
                   <small>{item.type}</small>
-                  {privacy.content(item.text || item.title)}
+                  {privacy.content(peekText(item.text || item.title))}
                 </p>
               )) : pending.length === 0 ? <p>No recent activity to peek yet.</p> : null}
             </div>
