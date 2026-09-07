@@ -4,6 +4,18 @@
 
 - Live lets you allow or reject a pending tool from the roster peek,
   without opening Control.
+- Session console renders Grok replies as Markdown (headings, emphasis, code,
+  lists, tables, links) through a renderer that never emits raw HTML.
+- Session console shows one row per tool call, with the descriptive title and
+  final status, instead of a pending row followed by an update row. Live and
+  recorded events share the same labels: User message, Reasoning, Grok
+  response.
+- Long pasted messages start collapsed with a Show all control; the newest
+  event always shows in full. The timeline opens at the latest event and the
+  Latest button only appears once you scroll up.
+- Session console header shows model, agent, and start date instead of filler
+  copy, and the instruments show the model where status was duplicated. While
+  a session loads, the title and workspace say so instead of inventing values.
 - File watching uses Node's native recursive `fs.watch` instead of one
   descriptor per directory, so a large Grok home or repository no longer
   exhausts file descriptors (`EMFILE`) and crashes the supervisor. A watcher
