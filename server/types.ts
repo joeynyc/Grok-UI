@@ -348,6 +348,8 @@ export interface WorkspaceSnapshot {
   additions: number
   deletions: number
   error: string
+  /** False when live file watching is unavailable and only manual refresh updates the view. */
+  watching?: boolean
 }
 
 export interface WorkspaceChangeEvent {

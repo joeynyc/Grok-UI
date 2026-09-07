@@ -168,8 +168,30 @@ describe('Session transcript reader', () => {
           update: {
             sessionUpdate: 'tool_call',
             toolCallId: 'tool-1',
+            title: 'read_file',
+            rawInput: { secret: 'do-not-expose' },
+          },
+        },
+      },
+      {
+        timestamp: 1_784_887_204,
+        params: {
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tool-1',
             title: 'Read project',
             rawInput: { secret: 'do-not-expose' },
+          },
+        },
+      },
+      {
+        timestamp: 1_784_887_205,
+        params: {
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tool-1',
+            status: 'completed',
+            rawOutput: { secret: 'do-not-expose' },
           },
         },
       },
@@ -203,7 +225,9 @@ describe('Session transcript reader', () => {
     })
 
     expect(transcript.map((item) => item.type)).toEqual(['user', 'thought', 'assistant', 'tool'])
-    expect(transcript[3]).toMatchObject({ title: 'Read project', status: 'pending' })
+    // One tool call and its updates collapse into a single row with the descriptive title and final status.
+    expect(transcript[3]).toMatchObject({ title: 'Read project', status: 'completed' })
+    expect(JSON.stringify(transcript)).not.toContain('toolCallId')
     expect(JSON.stringify(transcript)).not.toContain('do-not-expose')
   })
 

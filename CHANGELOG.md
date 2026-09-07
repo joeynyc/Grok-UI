@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- Live lets you allow or reject a pending tool from the roster peek,
+  without opening Control.
+- Session console renders Grok replies as Markdown (headings, emphasis, code,
+  lists, tables, links) through a renderer that never emits raw HTML.
+- Session console shows one row per tool call, with the descriptive title and
+  final status, instead of a pending row followed by an update row. Live and
+  recorded events share the same labels: User message, Reasoning, Grok
+  response.
+- Long pasted messages start collapsed with a Show all control; the newest
+  event always shows in full. The timeline opens at the latest event and the
+  Latest button only appears once you scroll up.
+- Session console header shows model, agent, and start date instead of filler
+  copy, and the instruments show the model where status was duplicated. While
+  a session loads, the title and workspace say so instead of inventing values.
+- File watching uses Node's native recursive `fs.watch` instead of one
+  descriptor per directory, so a large Grok home or repository no longer
+  exhausts file descriptors (`EMFILE`) and crashes the supervisor. A watcher
+  that still fails is closed and reported: the Live monitor falls back to its
+  liveness poll, and Changes shows Manual refresh for that workspace. Only
+  the three most recent workspaces stay watched and common build and cache
+  directories are ignored. `chokidar` is no longer a dependency.
+- An unreachable server shows a Link interrupted screen with Try again
+  instead of the remote access token gate.
+- Live roster titles and workspaces are readable again; the roster grid still
+  reserved a column for a removed index.
+- Live's Open agents count matches the roster, which includes managed
+  sessions, and the roster peek flattens Markdown into prose.
+- Session console shows an em dash instead of `NaNd` when a session has no
+  update time.
+- Changes explains when a workspace is not a Git repository or when a filter
+  matches nothing, and probes only the six most recent workspaces for a
+  repository.
+
 ## 0.12.1 — 2026-08-26
 
 - A pending permission stays in Needs you instead of flipping back to

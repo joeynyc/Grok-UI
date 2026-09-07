@@ -42,10 +42,12 @@ export function buildRoster(
       existing.source = 'managed'
       existing.parentId = existing.parentId || session.parentSessionId
       if (session.feed.length) existing.peek = session.feed.slice(-4)
-      if (session.state === 'attention' || session.state === 'failed') existing.state = session.state
+      if (session.state === 'attention' || session.state === 'failed' || pendingApproval(control, session.id)) {
+        existing.state = session.state === 'failed' ? 'failed' : 'attention'
+      }
       continue
     }
-    rows.set(session.id, fromManaged(session))
+    rows.set(session.id, fromManaged(session, control))
   }
   const roots: RosterRow[] = []
   for (const row of rows.values()) {
@@ -56,6 +58,22 @@ export function buildRoster(
   return roots.sort(byAttention)
 }
 
+export function permissionsForSession(
+  control: ControlSnapshot | null,
+  sessionId: string,
+) {
+  return (control?.permissions || []).filter((permission) => permission.sessionId === sessionId)
+}
+
+export function shouldShowFirstRun(input: {
+  setupReady?: boolean
+  hasRoster: boolean
+  archivedSessions: number
+}) {
+  if (input.setupReady === false) return true
+  return !input.hasRoster && input.archivedSessions === 0
+}
+
 export function groupedRoster(rows: RosterRow[]): Array<{ id: RosterState; label: string; rows: RosterRow[] }> {
   return ROSTER_GROUPS
     .map((group) => ({
@@ -63,6 +81,30 @@ export function groupedRoster(rows: RosterRow[]): Array<{ id: RosterState; label
       rows: rows.filter((row) => row.state === group.id),
     }))
     .filter((group) => group.rows.length > 0)
+}
+
+/**
+ * Flatten Markdown from an assistant message into plain prose for the small
+ * roster peek, which has no room to render it.
+ */
+export function peekText(input: string, limit = 360): string {
+  let text = input
+    .replace(/```[a-z]*\n?([\s\S]*?)```/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/(^|\s)[*_]([^*_\n]+)[*_](?=\s|$|[.,;:!?])/g, '$1$2')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, '')
+    .replace(/^[ \t]*\|[ \t]*|[ \t]*\|[ \t]*$/gm, '')
+    .replace(/\s*\|\s*/g, ' · ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .trim()
+  if (text.length > limit) text = `${text.slice(0, limit - 1).trimEnd()}…`
+  return text
 }
 
 function fromLive(agent: LiveAgent): RosterRow {
@@ -79,13 +121,17 @@ function fromLive(agent: LiveAgent): RosterRow {
   }
 }
 
-function fromManaged(session: ControlSession): RosterRow {
-  const state: RosterState = session.state === 'attention'
-    ? 'attention'
-    : session.state === 'working' || session.state === 'starting' || session.state === 'stopping'
-      ? 'working'
-      : session.state === 'failed'
-        ? 'failed'
+function pendingApproval(control: ControlSnapshot | null | undefined, sessionId: string): boolean {
+  return Boolean(control?.permissions.some((permission) => permission.sessionId === sessionId))
+}
+
+function fromManaged(session: ControlSession, control: ControlSnapshot | null): RosterRow {
+  const state: RosterState = session.state === 'failed'
+    ? 'failed'
+    : session.state === 'attention' || pendingApproval(control, session.id)
+      ? 'attention'
+      : session.state === 'working' || session.state === 'starting' || session.state === 'stopping'
+        ? 'working'
         : 'idle'
   return {
     id: session.id,
