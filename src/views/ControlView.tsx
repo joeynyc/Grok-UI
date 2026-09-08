@@ -101,7 +101,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
   return (
     <>
       <section className="page-intro command-intro">
-        <div className="page-intro-index">02</div>
+        <div className="page-intro-index">08</div>
         <div className="page-intro-copy">
           <div className="kicker"><Command size={14} /> Control</div>
           <h1>Don’t just watch.<br /><em>Run the room.</em></h1>

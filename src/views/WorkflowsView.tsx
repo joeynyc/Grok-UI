@@ -171,7 +171,7 @@ export function WorkflowsView({
   return (
     <>
       <header className="page-intro">
-        <div className="intro-index">03</div>
+        <div className="intro-index">02</div>
         <div>
           <div className="kicker">Cross-session orchestration</div>
           <h1>Every run.<br /><em>One command field.</em></h1>

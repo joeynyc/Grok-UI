@@ -751,15 +751,16 @@ kbd {
 
 .page-intro {
   position: relative;
-  min-height: 205px;
+  min-height: 126px;
   display: grid;
-  grid-template-columns: 50px minmax(420px, 1fr) minmax(260px, 420px);
-  gap: 28px;
+  grid-template-columns: 44px minmax(380px, 1fr) minmax(260px, 420px);
+  gap: 22px;
   align-items: end;
-  padding-bottom: 38px;
+  padding-bottom: 22px;
 }
 
-.intro-index {
+.intro-index,
+.page-intro-index {
   align-self: start;
   padding-top: 7px;
   writing-mode: vertical-rl;
@@ -777,10 +778,10 @@ kbd {
 
 .page-intro h1 {
   max-width: 800px;
-  margin: 14px 0 0;
-  font-size: clamp(43px, 5vw, 78px);
-  line-height: .88;
-  letter-spacing: -.06em;
+  margin: 8px 0 0;
+  font-size: clamp(30px, 3.1vw, 46px);
+  line-height: .94;
+  letter-spacing: -.045em;
   font-weight: 650;
 }
 
@@ -4779,14 +4780,14 @@ kbd {
   }
 
   .page-intro {
-    min-height: 190px;
+    min-height: 132px;
     grid-template-columns: 20px 1fr;
     gap: 12px;
-    padding-bottom: 28px;
+    padding-bottom: 20px;
   }
 
   .page-intro h1 {
-    font-size: clamp(39px, 13vw, 58px);
+    font-size: clamp(30px, 9vw, 40px);
   }
 
   .page-intro > p {

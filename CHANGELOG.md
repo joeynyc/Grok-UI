@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Room heroes are about 40% shorter so the roster, tables, and diffs start
+  higher on a laptop screen.
+- The primary rail reads 01 through 07 in display order, every room hero
+  carries the same number, and the number keys 1 through 7 jump to those
+  rooms. Control, Activity, Library, Memory, and Themes follow as 08 to 12
+  with 8, 9, l, m, and t.
 - Usage explains why token and cost columns show dashes when every
   observation is unavailable: Grok CLI records context occupancy for terminal
   sessions but not cumulative usage, and Grok UI does not estimate spend.

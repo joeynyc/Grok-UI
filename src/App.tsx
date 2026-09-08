@@ -97,17 +97,17 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'live', index: '01', label: 'Live', eyebrow: 'Runtime', icon: Radio, shortcut: '1' },
-  { id: 'control', index: '02', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '2' },
-  { id: 'runs', index: '03', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '3' },
-  { id: 'changes', index: '04', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '4' },
+  { id: 'control', index: '08', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '8' },
+  { id: 'runs', index: '02', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '2' },
+  { id: 'changes', index: '03', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '3' },
   { id: 'overview', index: '05', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
-  { id: 'sessions', index: '06', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '6' },
-  { id: 'activity', index: '07', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '7' },
-  { id: 'usage', index: '08', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: 'u' },
-  { id: 'fleet', index: '09', label: 'Fleet', eyebrow: 'Monitor', icon: Network, shortcut: 'f' },
-  { id: 'library', index: '10', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: '8' },
-  { id: 'memory', index: '11', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: '9' },
-  { id: 'themes', index: '12', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: '0' },
+  { id: 'sessions', index: '04', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '4' },
+  { id: 'activity', index: '09', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '9' },
+  { id: 'usage', index: '06', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: '6' },
+  { id: 'fleet', index: '07', label: 'Fleet', eyebrow: 'Monitor', icon: Network, shortcut: '7' },
+  { id: 'library', index: '10', label: 'Library', eyebrow: 'Capability', icon: Blocks, shortcut: 'l' },
+  { id: 'memory', index: '11', label: 'Memory', eyebrow: 'Recall', icon: BrainCircuit, shortcut: 'm' },
+  { id: 'themes', index: '12', label: 'Themes', eyebrow: 'Appearance', icon: Palette, shortcut: 't' },
 ]
 
 const MOBILE_NAV_IDS: ViewId[] = ['live', 'runs', 'sessions', 'fleet']
@@ -1522,7 +1522,7 @@ function SessionsView({
   return (
     <>
       <PageIntro
-        index="06"
+        index="04"
         eyebrow="Conversation archive"
         title={<>Every run.<br /><em>Nothing buried.</em></>}
         description="Search local session metadata without sending conversation content anywhere."
@@ -1582,7 +1582,7 @@ function ActivityView({ data }: { data: DashboardPayload }) {
   return (
     <>
       <PageIntro
-        index="07"
+        index="09"
         eyebrow="Operational telemetry"
         title={<>The shape of<br /><em>the work.</em></>}
         description="A two-week read on agent velocity, tool intensity, code movement, and friction."
