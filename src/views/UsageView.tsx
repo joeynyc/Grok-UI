@@ -46,6 +46,10 @@ function metricValue(metric: UsageMetric): string {
   return metric.value >= 10_000 ? compact.format(metric.value) : metric.value.toLocaleString()
 }
 
+function allUnavailable(report: UsageReport): boolean {
+  return (report.coverage['grok-reported'] || 0) + (report.coverage.derived || 0) + (report.coverage.incomplete || 0) === 0
+}
+
 function sourceLabel(source: UsageSource): string {
   return source === 'grok-reported' ? 'Grok-reported' : source
 }
@@ -228,6 +232,15 @@ export function UsageView() {
               </div>
             </article>
           </section>
+
+          {report && report.entries.length > 0 && allUnavailable(report) && (
+            <p className="usage-scope-note usage-unavailable-note" role="note">
+              <strong>Why the dashes?</strong> Grok CLI records how full the context window is for terminal
+              sessions, but not cumulative token usage or cost, so Grok UI leaves those unavailable rather than
+              estimating spend. Token and cost figures appear for sessions started from Grok UI and for workflow
+              agents when Grok reports them.
+            </p>
+          )}
 
           <section className="usage-ledger section-gap">
             <header>

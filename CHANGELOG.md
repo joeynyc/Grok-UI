@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Usage explains why token and cost columns show dashes when every
+  observation is unavailable: Grok CLI records context occupancy for terminal
+  sessions but not cumulative usage, and Grok UI does not estimate spend.
+- Fleet browser tests register the first host with real key events and clear
+  the registry before the serial block, fixing a WebKit-only failure where a
+  `type="url"` field lost its value and a retry inherited stale hosts.
 - Live lets you allow or reject a pending tool from the roster peek,
   without opening Control.
 - Session console renders Grok replies as Markdown (headings, emphasis, code,

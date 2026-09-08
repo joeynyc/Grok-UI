@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -34,6 +34,32 @@ async function registerHost(
   const body = await response.json()
   expect(response.status(), JSON.stringify(body)).toBe(201)
   return body
+}
+
+/**
+ * Remove every registered host so a CI retry of this serial block starts from
+ * the same empty registry as a fresh run instead of inheriting hosts from the
+ * failed attempt.
+ */
+async function clearFleet(request: APIRequestContext): Promise<void> {
+  const fleet = await (await request.get('/api/fleet')).json()
+  for (const host of fleet.hosts as Array<{ id: string }>) {
+    const response = await request.delete(`/api/fleet/hosts/${host.id}`)
+    expect([204, 404]).toContain(response.status())
+  }
+}
+
+/**
+ * Type a value with real key events and confirm React kept it. Playwright's
+ * `fill` on a `type="url"` input in WebKit can set the DOM value without the
+ * controlled input registering it, after which the next render clears the
+ * field and the form's required check silently blocks submission.
+ */
+async function typeInto(field: Locator, value: string): Promise<void> {
+  await field.click()
+  await field.fill('')
+  await field.pressSequentially(value)
+  await expect(field).toHaveValue(value)
 }
 
 async function fleetStatus(request: APIRequestContext, label: string): Promise<string> {
@@ -74,16 +100,18 @@ async function unreadableVisibleText(page: Page, minimumPx = 8) {
 test.describe.serial('read-only fleet monitoring', () => {
   test('registers multiple hosts and exposes bounded read-only telemetry with explicit states', async ({ page }) => {
     const setup = await fixture()
+    await clearFleet(page.request)
     await page.goto('/')
     await page.getByRole('button', { name: /Fleet/ }).click()
 
     await page.getByRole('button', { name: 'Register host' }).first().click()
     const editor = page.getByRole('dialog', { name: 'Register a host' })
-    await editor.getByLabel('Display name').fill('Healthy Workstation')
+    await typeInto(editor.getByLabel('Display name'), 'Healthy Workstation')
     await editor.getByLabel('Transport').selectOption('direct')
-    await editor.getByLabel('Loopback agent URL').fill(setup.fleetHosts.healthy.url)
-    await editor.getByLabel(/Agent token/).fill(setup.fleetHosts.healthy.token)
+    await typeInto(editor.getByLabel('Loopback agent URL'), setup.fleetHosts.healthy.url)
+    await typeInto(editor.getByLabel(/Agent token/), setup.fleetHosts.healthy.token)
     await editor.getByRole('button', { name: 'Register host' }).click()
+    await expect(editor).toBeHidden({ timeout: 10_000 })
 
     await registerHost(page.request, 'Degraded Workstation', setup.fleetHosts.degraded)
     await registerHost(page.request, 'Future Protocol Workstation', setup.fleetHosts.incompatible)
