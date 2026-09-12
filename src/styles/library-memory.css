@@ -1,0 +1,247 @@
+/* Library and Memory rooms. */
+
+.library-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.library-intro {
+  min-height: 62px;
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding-bottom: 17px;
+  color: var(--lime);
+  border-bottom: 1px solid var(--line);
+}
+
+.library-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-body);
+  line-height: 1.6;
+}
+
+.capability-list {
+  max-height: 500px;
+  margin-top: 7px;
+  overflow: auto;
+}
+
+.capability-list > div,
+.capability-list > button {
+  width: 100%;
+  min-height: 43px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 25px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.capability-list > button.is-selected,
+.memory-file-list > button.is-selected {
+  background: color-mix(in srgb, var(--lime) 8%, transparent);
+}
+
+.capability-list strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--type-body);
+  font-weight: 450;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capability-icon {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--lime);
+  border: 1px solid rgba(217,255,67,.35);
+  font-size: var(--type-label);
+}
+
+.source-tag {
+  padding: 3px 5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-size: var(--type-micro);
+  text-transform: uppercase;
+}
+
+.source-user { color: var(--lime); border-color: rgba(217,255,67,.25); }
+.source-marketplace { color: var(--amber); border-color: rgba(255,202,87,.25); }
+
+.memory-hero {
+  position: relative;
+  min-height: 190px;
+  margin-top: 26px;
+  padding: 25px 28px;
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: center;
+  gap: 25px;
+  overflow: hidden;
+  border: 1px solid rgba(217,255,67,.28);
+  background: linear-gradient(110deg, rgba(217,255,67,.09), rgba(13,15,12,.85) 48%);
+}
+
+.memory-hero::after {
+  content: 'MEM';
+  position: absolute;
+  right: -13px;
+  top: -35px;
+  color: rgba(255,255,255,.025);
+  font-family: 'Syne Variable', sans-serif;
+  font-size: 155px;
+  font-weight: 800;
+}
+
+.memory-symbol {
+  position: relative;
+  width: 85px;
+  height: 85px;
+  display: grid;
+  place-items: center;
+  color: var(--lime);
+  border: 1px solid var(--lime);
+  transform: rotate(45deg);
+}
+
+.memory-symbol svg {
+  transform: rotate(-45deg);
+}
+
+.memory-symbol span {
+  position: absolute;
+  inset: 9px;
+  border: 1px dashed rgba(217,255,67,.26);
+}
+
+.memory-hero > div:nth-child(2) > strong {
+  display: block;
+  margin: 6px 0 -5px;
+  font-family: 'Syne Variable', sans-serif;
+  font-size: 68px;
+  line-height: 1;
+}
+
+.memory-hero p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--type-body);
+}
+
+.privacy-badge {
+  position: relative;
+  z-index: 1;
+  max-width: 270px;
+  padding: 15px;
+  display: flex;
+  gap: 11px;
+  color: var(--lime);
+  border: 1px solid var(--line);
+  background: rgba(9,10,8,.55);
+}
+
+.privacy-badge span {
+  display: grid;
+  gap: 5px;
+}
+
+.privacy-badge strong {
+  color: var(--paper);
+  font-size: var(--type-body);
+  text-transform: uppercase;
+}
+
+.privacy-badge small {
+  color: var(--muted);
+  font-size: var(--type-label);
+  line-height: 1.5;
+}
+
+.memory-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.memory-file-list {
+  display: grid;
+  gap: 1px;
+}
+
+.memory-file-list > div,
+.memory-file-list > button {
+  width: 100%;
+  min-height: 53px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memory-file-list svg {
+  color: var(--lime);
+}
+
+.memory-file-list span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.memory-file-list strong {
+  overflow: hidden;
+  font-size: var(--type-meta);
+  font-weight: 450;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-file-list small,
+.memory-file-list em {
+  color: var(--muted);
+  font-size: var(--type-label);
+  font-style: normal;
+}
+
+.inventory-detail {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  background: rgba(13, 15, 12, .72);
+}
+
+.inventory-detail small {
+  color: var(--muted);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.inventory-detail strong {
+  display: block;
+  margin: 8px 0 6px;
+}
+
+.inventory-detail p {
+  margin: 0;
+  color: var(--muted);
+}

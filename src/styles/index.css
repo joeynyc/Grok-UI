@@ -1,0 +1,26 @@
+/* Grok UI stylesheet. Order matters: later files override earlier ones at
+   equal specificity, and responsive.css deliberately sits after the rooms it
+   adjusts. Add a new room by appending a file here. */
+
+@import './base.css';
+@import './shell.css';
+@import './hero.css';
+@import './live.css';
+@import './overview.css';
+@import './themes.css';
+@import './panels.css';
+@import './sessions.css';
+@import './activity.css';
+@import './library-memory.css';
+@import './overlays.css';
+@import './control.css';
+@import './changes.css';
+@import './access.css';
+@import './responsive.css';
+@import './session-workbench.css';
+@import './onboarding.css';
+@import './workflows.css';
+@import './usage.css';
+@import './runtime-intelligence.css';
+@import './fleet.css';
+@import './minimal-calm.css';

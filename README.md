@@ -460,7 +460,11 @@ src/
                             local session timeline, preview, and operations
   views/RemoteSessionWorkbench.tsx
                             live remote conversation and safe controls
-  App.tsx                 dashboard shell and event-stream client
+  App.tsx                 routing, data loading, event-stream client, shortcuts
+  shell/                  chrome: sidebar, top bar, mobile nav, palette, access
+                            screens, shared primitives, nav and theme registries
+  format.ts               shared number and time formatting
+  styles/index.css        ordered stylesheet index; one file per room or layer
   styles/fleet.css        Fleet-only presentation
   styles/minimal-calm.css isolated quiet-theme presentation layer
 ```

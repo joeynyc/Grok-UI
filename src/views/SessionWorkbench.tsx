@@ -53,6 +53,7 @@ import type {
 import { Markdown, renderInline } from '../markdown'
 import { usePrivacy } from '../privacy'
 import { SessionPlanPanel } from './SessionPlanPanel'
+import { clockTime, compactNumber, elapsed, shortDate } from '../format'
 
 type WorkbenchTab = 'timeline' | 'preview' | 'changes' | 'specs'
 type PreviewViewport = 'desktop' | 'tablet' | 'mobile'
@@ -65,33 +66,6 @@ interface SessionWorkbenchProps {
   returnFocus?: HTMLElement | null
   onClose: () => void
   onUpdated: () => Promise<void>
-}
-
-function compact(value: number): string {
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-}
-
-function time(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function elapsed(value: string): string {
-  const stamp = new Date(value).getTime()
-  if (!value || Number.isNaN(stamp)) return '—'
-  const difference = Math.max(0, Date.now() - stamp)
-  if (difference < 60_000) return 'now'
-  if (difference < 3_600_000) return `${Math.floor(difference / 60_000)}m`
-  if (difference < 86_400_000) return `${Math.floor(difference / 3_600_000)}h`
-  return `${Math.floor(difference / 86_400_000)}d`
-}
-
-function startedLabel(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  const sameYear = date.getFullYear() === new Date().getFullYear()
-  return date.toLocaleDateString('en-US', sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 /**
@@ -369,7 +343,7 @@ export function SessionWorkbench({
     )
   )
   const cancellationNotice = data?.control?.state === 'cancelled'
-    ? `Cancelled by user at ${time(data.control.cancelledAt || data.control.updatedAt)}.`
+    ? `Cancelled by user at ${clockTime(data.control.cancelledAt || data.control.updatedAt)}.`
     : data?.control?.state === 'stopping'
       ? 'Stop requested. Waiting for Grok to confirm cancellation.'
       : ''
@@ -429,7 +403,7 @@ export function SessionWorkbench({
                 {[
                   session?.model,
                   session?.agent ? privacy.capability(session.agent, 'Agent') : '',
-                  session?.createdAt ? `Started ${startedLabel(session.createdAt)}` : '',
+                  session?.createdAt ? `Started ${shortDate(session.createdAt)}` : '',
                 ].filter(Boolean).join(' · ') || (loading ? 'Reading session record…' : 'Chat with this agent, review its activity, and inspect changes.')}
               </span>
             </div>
@@ -459,8 +433,8 @@ export function SessionWorkbench({
 
         <div className="workbench-instruments">
           <div><span>MODEL</span><strong className="is-text">{session?.model || '—'}</strong></div>
-          <div><span>TURNS</span><strong>{compact(session?.turns || turnCount)}</strong></div>
-          <div><span>TOOLS</span><strong>{compact(session?.toolCalls || toolCount)}</strong></div>
+          <div><span>TURNS</span><strong>{compactNumber(session?.turns || turnCount)}</strong></div>
+          <div><span>TOOLS</span><strong>{compactNumber(session?.toolCalls || toolCount)}</strong></div>
           <div><span>CONTEXT</span><strong>{Math.round((data?.live?.contextUsage || session?.contextUsage || 0) * 100)}%</strong></div>
           <div><span>COST</span><strong>{data?.control?.costAmount || data?.live?.costAmount
             ? `${(data?.control?.costAmount || data?.live?.costAmount || 0).toFixed(3)} ${data?.control?.costCurrency || data?.live?.costCurrency}`
@@ -745,7 +719,7 @@ export function SessionTimeline({
               <span>{item.type === 'assistant' ? 'GROK' : item.type.toUpperCase()}</span>
               <strong title={privacy.content(item.title)}>{renderInline(privacy.content(item.title))}</strong>
               {item.status && <em>{item.status}</em>}
-              <time>{time(item.timestamp)}</time>
+              <time>{clockTime(item.timestamp)}</time>
             </header>
             {item.text && (
               <EventBody
@@ -884,7 +858,7 @@ function Details({ session, data }: { session: SessionRow | null; data: SessionW
     ['Runtime source', data?.live ? privacy.enabled ? 'CLI PID ••••' : `CLI PID ${data.live.pid}` : data?.managed ? 'Grok UI control' : 'Local archive'],
     ['Managed', data?.managed ? 'Yes — durable control record' : 'No — attach with a follow-up'],
     ['Archive state', session.archived ? 'Archived in Grok UI' : 'Active'],
-    ['Disk footprint', `${compact(session.diskBytes)} bytes`],
+    ['Disk footprint', `${compactNumber(session.diskBytes)} bytes`],
   ]
   return (
     <div className="workbench-details">

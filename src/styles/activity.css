@@ -1,0 +1,104 @@
+/* Activity telemetry: signal metrics and the 14-day matrix. */
+
+.signal-metrics {
+  margin-top: 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.signal-metric {
+  min-height: 104px;
+  padding: 17px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: auto 1fr;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: rgba(14,16,13,.76);
+}
+
+.signal-metric svg {
+  color: var(--lime);
+}
+
+.signal-metric span {
+  color: var(--muted);
+  font-size: var(--type-meta);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.signal-metric strong {
+  grid-column: 1 / -1;
+  align-self: end;
+  font-family: 'Syne Variable', sans-serif;
+  font-size: 29px;
+}
+
+.signal-metric.is-warning svg,
+.signal-metric.is-warning strong {
+  color: var(--coral);
+}
+
+.wide-activity .panel-body {
+  overflow-x: auto;
+}
+
+.activity-matrix {
+  min-width: 890px;
+}
+
+.matrix-dates,
+.matrix-row {
+  display: grid;
+  grid-template-columns: 76px repeat(14, minmax(42px, 1fr));
+  gap: 4px;
+}
+
+.matrix-dates {
+  margin-bottom: 6px;
+}
+
+.matrix-dates > span {
+  display: grid;
+  color: #74786e;
+  font-size: var(--type-label);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.matrix-dates small {
+  margin-top: 3px;
+  color: #494d46;
+  font-size: var(--type-micro);
+}
+
+.matrix-row {
+  margin-bottom: 4px;
+}
+
+.matrix-row > strong {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--type-meta);
+  font-weight: 450;
+  text-transform: uppercase;
+}
+
+.matrix-cell {
+  height: 48px;
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--paper) calc(var(--intensity) * 85%), #555 15%);
+  border: 1px solid color-mix(in srgb, var(--lime) calc(var(--intensity) * 38%), var(--line));
+  background: color-mix(in srgb, var(--lime) calc(var(--intensity) * 24%), var(--surface));
+  font-size: var(--type-meta);
+}
+
+.matrix-cell.is-error {
+  color: var(--coral);
+  border-color: color-mix(in srgb, var(--coral) calc(var(--intensity) * 55%), var(--line));
+  background: color-mix(in srgb, var(--coral) calc(var(--intensity) * 20%), var(--surface));
+}

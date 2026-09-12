@@ -1,0 +1,66 @@
+/* Room hero (.page-intro): index badge, kicker, title, rule. */
+
+.page-intro {
+  position: relative;
+  min-height: 126px;
+  display: grid;
+  grid-template-columns: 44px minmax(380px, 1fr) minmax(260px, 420px);
+  gap: 22px;
+  align-items: end;
+  padding-bottom: 22px;
+}
+
+.intro-index,
+.page-intro-index {
+  align-self: start;
+  padding-top: 7px;
+  writing-mode: vertical-rl;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--lime);
+  font-size: var(--type-body);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.page-intro h1 {
+  max-width: 800px;
+  margin: 8px 0 0;
+  font-size: clamp(30px, 3.1vw, 46px);
+  line-height: .94;
+  letter-spacing: -.045em;
+  font-weight: 650;
+}
+
+.page-intro h1 em {
+  color: #767a70;
+  font-weight: 420;
+  font-style: normal;
+}
+
+.page-intro > p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.intro-rule {
+  position: absolute;
+  height: 1px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--line);
+}
+
+.intro-rule span {
+  position: absolute;
+  width: 9%;
+  height: 1px;
+  background: var(--lime);
+}

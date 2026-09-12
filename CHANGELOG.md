@@ -6,6 +6,14 @@
   or while typing inside a dialog. Picking a model or permission mode with the
   keyboard, or entering a host URL, stayed on the room the user was in only by
   luck; in WebKit it jumped rooms mid-entry and closed the host editor.
+- `src/App.tsx` now holds only routing, data loading, the event stream, and
+  shortcuts. Chrome moved to `src/shell/`, the Live, Overview, Sessions,
+  Activity, Library, Memory, and Themes rooms to `src/views/`, and number and
+  time formatting to `src/format.ts` with tests. Relative times show an em
+  dash for a missing stamp instead of `Invalid Date`.
+- `src/styles.css` is split into one file per room or layer under
+  `src/styles/`, imported in order from `src/styles/index.css`. The built
+  stylesheet is byte-identical.
 
 ## 0.13.0 — 2026-09-12
 

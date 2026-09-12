@@ -1,6 +1,7 @@
 import { CornerDownLeft, Radio, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createControlSession, listControlModels, promptControlSession } from '../api'
+import { compactNumber } from '../format'
 import { usePrivacy } from '../privacy'
 import type {
   ControlSession,
@@ -47,10 +48,6 @@ export function listResumable(
     seen.add(session.id)
     return true
   })
-}
-
-function compact(value: number): string {
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
 interface SessionLaunchFormProps {
@@ -270,7 +267,7 @@ export function SessionLaunchForm({
           maxLength={32_000}
           required
         />
-        <small>{compact(prompt.length)} / 32K</small>
+        <small>{compactNumber(prompt.length)} / 32K</small>
       </label>
 
       <button

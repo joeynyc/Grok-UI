@@ -17,6 +17,7 @@ import type {
   DashboardPayload,
   LiveSnapshot,
 } from '../types'
+import { clockTime, compactNumber } from '../format'
 import { usePrivacy } from '../privacy'
 import { SessionLaunchForm } from './SessionLaunchForm'
 
@@ -28,22 +29,10 @@ interface ControlViewProps {
   onOpenSession: (sessionId: string) => void
 }
 
-function compact(value: number): string {
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-}
-
 function cancellationTime(session: ControlSession): string {
   const value = session.cancelledAt || session.cancelRequestedAt
   if (!value) return '—'
-  return controlTime(value)
-}
-
-function controlTime(value: string): string {
-  return new Date(value).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  return clockTime(value, true)
 }
 
 function lastCompletedTool(session: ControlSession): string {
@@ -216,7 +205,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                   <p><FolderGit2 size={13} /> {privacy.path(session.cwd)}</p>
                 </div>
                 <div className="lane-telemetry">
-                  <div><span>TOKENS</span><strong>{compact(session.totalTokens)}</strong></div>
+                  <div><span>TOKENS</span><strong>{compactNumber(session.totalTokens)}</strong></div>
                   <div><span>COST</span><strong>{session.costAmount ? `${session.costAmount.toFixed(3)} ${session.costCurrency}` : '—'}</strong></div>
                   <div>
                     <span>STOP</span>
@@ -280,7 +269,7 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
                       <span>CONTROL INTERRUPTED</span>
                       <strong>{privacy.content(session.error)}</strong>
                     </div>
-                    <div><span>TIME</span><strong>{controlTime(session.updatedAt)}</strong></div>
+                    <div><span>TIME</span><strong>{clockTime(session.updatedAt, true)}</strong></div>
                     <div><span>RECOVERY</span><strong>Control reconnected; resume when ready</strong></div>
                   </div>
                 )}

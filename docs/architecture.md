@@ -250,7 +250,11 @@ a second `ARCHITECTURE.md`; update this map when ownership moves.
 
 | Responsibility | Owner |
 | --- | --- |
-| Browser shell, navigation, local and fleet SSE lifecycle | `src/App.tsx` |
+| Routing, data loading, local and fleet SSE lifecycle, keyboard shortcuts | `src/App.tsx` |
+| Browser chrome: sidebar, top bar, mobile nav, command palette, access screens | `src/shell/` |
+| Nav item registry (indices, shortcuts) and theme registry | `src/shell/nav.ts`, `src/shell/themes.ts` |
+| Shared number and time formatting | `src/format.ts` |
+| Stylesheet order and per-room CSS files | `src/styles/index.css` |
 | Fleet page coordination, selection, filters, and registry actions | `src/views/FleetView.tsx` |
 | Fleet selectors, caps, formatting, and availability derivation | `src/views/fleet/model.ts` |
 | Fleet status and freshness presentation | `src/views/fleet/status.tsx` |
