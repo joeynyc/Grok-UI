@@ -19,6 +19,7 @@ import type {
 } from '../types'
 import { clockTime, compactNumber } from '../format'
 import { usePrivacy } from '../privacy'
+import { PageIntro } from '../shell/primitives'
 import { SessionLaunchForm } from './SessionLaunchForm'
 
 interface ControlViewProps {
@@ -89,14 +90,14 @@ export function ControlView({ data, live, control, onRefresh, onOpenSession }: C
 
   return (
     <>
-      <section className="page-intro command-intro">
-        <div className="page-intro-index">08</div>
-        <div className="page-intro-copy">
-          <div className="kicker"><Command size={14} /> Control</div>
-          <h1>Don’t just watch.<br /><em>Run the room.</em></h1>
-        </div>
-        <p>Launch concurrent Grok agents, resume any conversation, approve sensitive work, and stop a turn without returning to the terminal.</p>
-      </section>
+      <PageIntro
+        index="08"
+        className="command-intro"
+        icon={Command}
+        eyebrow="Control"
+        title={<>Don’t just watch.<br /><em>Run the room.</em></>}
+        description="Launch concurrent Grok agents, resume any conversation, approve sensitive work, and stop a turn without returning to the terminal."
+      />
 
       <section className="control-health-strip">
         <div>

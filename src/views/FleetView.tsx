@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { refreshFleetHost } from '../api'
 import { usePrivacy } from '../privacy'
+import { PageIntro } from '../shell/primitives'
 import type { FleetHostView, FleetSnapshot, SessionRow } from '../types'
 import { HostEditor } from './fleet/HostEditor'
 import {
@@ -161,18 +162,14 @@ export function FleetView({
 
   return (
     <>
-      <header className="page-intro fleet-intro">
-        <div className="intro-index">07</div>
-        <div>
-          <div className="kicker"><Network size={14} /> Multi-machine monitoring</div>
-          <h1>Every host.<br /><em>One quiet orbit.</em></h1>
-        </div>
-        <p>
-          Monitor every trusted host, then continue opted-in Grok Build sessions through
-          an authenticated Tailscale or SSH connection.
-        </p>
-        <div className="intro-rule"><span /></div>
-      </header>
+      <PageIntro
+        index="07"
+        className="fleet-intro"
+        icon={Network}
+        eyebrow="Multi-machine monitoring"
+        title={<>Every host.<br /><em>One quiet orbit.</em></>}
+        description="Monitor every trusted host, then continue opted-in Grok Build sessions through an authenticated Tailscale or SSH connection."
+      />
 
       <section className="fleet-constellation" aria-label="Fleet health summary">
         <div className="constellation-field" aria-hidden="true">

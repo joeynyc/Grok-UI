@@ -20,6 +20,7 @@ import {
   saveUsageBudget,
 } from '../api'
 import { usePrivacy } from '../privacy'
+import { PageIntro } from '../shell/primitives'
 import type {
   UsageGroupDimension,
   UsageBudgetDimension,
@@ -146,18 +147,12 @@ export function UsageView() {
 
   return (
     <>
-      <header className="page-intro">
-        <div className="intro-index">06</div>
-        <div>
-          <div className="kicker">Persistent usage ledger</div>
-          <h1>Know what was used,<br /><em>and how we know.</em></h1>
-        </div>
-        <p>
-          Durable token and cost observations across CLI sessions, managed sessions, and workflow agents,
-          with provenance attached to every value.
-        </p>
-        <div className="intro-rule"><span /></div>
-      </header>
+      <PageIntro
+        index="06"
+        eyebrow="Persistent usage ledger"
+        title={<>Know what was used,<br /><em>and how we know.</em></>}
+        description="Durable token and cost observations across CLI sessions, managed sessions, and workflow agents, with provenance attached to every value."
+      />
 
       <section className="usage-toolbar" aria-label="Usage report controls">
         <div>

@@ -1,20 +1,25 @@
-/* Room hero (.page-intro): index badge, kicker, title, rule. */
+/* Room hero (.page-intro): index badge, kicker, title, description, density
+   toggle, rule. `.is-compact` folds the whole thing to one line; the choice
+   is a device preference shared by every room (src/shell/hero.tsx). */
 
 .page-intro {
   position: relative;
   min-height: 126px;
   display: grid;
-  grid-template-columns: 44px minmax(380px, 1fr) minmax(260px, 420px);
+  grid-template-columns: 44px minmax(380px, 1fr) minmax(260px, 420px) auto;
   gap: 22px;
   align-items: end;
   padding-bottom: 22px;
 }
 
-.intro-index,
-.page-intro-index {
+.intro-index {
   align-self: start;
   padding-top: 7px;
   writing-mode: vertical-rl;
+}
+
+.intro-copy {
+  min-width: 0;
 }
 
 .kicker {
@@ -49,6 +54,29 @@
   line-height: 1.8;
 }
 
+.intro-density {
+  grid-row: 1;
+  grid-column: -2 / -1;
+  align-self: start;
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-dim);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s;
+}
+
+.intro-density:hover,
+.intro-density:focus-visible {
+  color: var(--lime);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, .025);
+}
+
 .intro-rule {
   position: absolute;
   height: 1px;
@@ -63,4 +91,53 @@
   width: 9%;
   height: 1px;
   background: var(--lime);
+}
+
+/* Compact: index, kicker, and title share one row; the description folds away. */
+
+.page-intro.is-compact {
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 4px 0 12px;
+}
+
+.page-intro.is-compact .intro-index {
+  align-self: center;
+  padding-top: 0;
+  writing-mode: horizontal-tb;
+}
+
+.page-intro.is-compact .intro-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 16px;
+  row-gap: 2px;
+}
+
+.page-intro.is-compact h1 {
+  max-width: none;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+  letter-spacing: -.02em;
+}
+
+.page-intro.is-compact h1 br {
+  display: none;
+}
+
+.page-intro.is-compact h1 em {
+  margin-left: .3em;
+}
+
+.page-intro.is-compact > p {
+  display: none;
+}
+
+.page-intro.is-compact .intro-density {
+  align-self: center;
+  color: var(--muted);
 }

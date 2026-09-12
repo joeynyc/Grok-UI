@@ -186,6 +186,37 @@ test.describe.serial('public launch path', () => {
     )).toBe(0)
   })
 
+  test('folds every room header to one line and remembers the choice', async ({ page }) => {
+    await page.goto('/#/sessions')
+    const hero = page.locator('.page-intro')
+    await expect(hero).toBeVisible()
+    await expect(hero).not.toHaveClass(/is-compact/)
+    const fullHeight = (await hero.boundingBox())!.height
+    expect(fullHeight).toBeGreaterThan(100)
+
+    await page.getByRole('button', { name: 'Compact room headers' }).click()
+    await expect(hero).toHaveClass(/is-compact/)
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-hero', 'compact')
+    await expect(hero.locator('> p')).toBeHidden()
+    const compactHeight = (await hero.boundingBox())!.height
+    expect(compactHeight).toBeLessThan(fullHeight / 2)
+    expect(await page.evaluate(() => localStorage.getItem('grok-ui-hero'))).toBe('compact')
+
+    // Shared by every room, including ones with their own hero styling.
+    await page.getByRole('button', { name: /Changes/ }).click()
+    await expect(page.locator('.page-intro.changes-intro')).toHaveClass(/is-compact/)
+    await page.reload()
+    await expect(page.locator('.page-intro')).toHaveClass(/is-compact/)
+
+    // Themes offers the same preference as a labelled control.
+    await page.getByRole('button', { name: /Themes/ }).click()
+    const density = page.getByRole('group', { name: 'Room header density' })
+    await expect(density.getByRole('button', { name: /Compact/ })).toHaveAttribute('aria-pressed', 'true')
+    await density.getByRole('button', { name: /^Full/ }).click()
+    await expect(page.locator('.page-intro')).not.toHaveClass(/is-compact/)
+    expect(await page.evaluate(() => localStorage.getItem('grok-ui-hero'))).toBe('full')
+  })
+
   test('guides a clean installation through missing CLI and ready states', async ({ page }) => {
     await Promise.all([
       fs.rm(path.join(grokHome, 'e2e-cli-ready'), { force: true }),

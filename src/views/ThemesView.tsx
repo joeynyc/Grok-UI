@@ -1,13 +1,23 @@
 import { ArrowRight, Check } from 'lucide-react'
+import type { HeroDensity } from '../shell/hero'
 import { PageIntro } from '../shell/primitives'
 import { THEMES, type ThemeId } from '../shell/themes'
+
+const HERO_DENSITIES: Array<{ id: HeroDensity; name: string; description: string }> = [
+  { id: 'full', name: 'Full', description: 'Large title and description at the top of each room.' },
+  { id: 'compact', name: 'Compact', description: 'One line per room so tables, rosters, and diffs start higher.' },
+]
 
 export function ThemesView({
   active,
   onSelect,
+  heroDensity,
+  onHeroDensity,
 }: {
   active: ThemeId
   onSelect: (theme: ThemeId) => void
+  heroDensity: HeroDensity
+  onHeroDensity: (density: HeroDensity) => void
 }) {
   return (
     <>
@@ -53,9 +63,38 @@ export function ThemesView({
         })}
       </section>
 
+      <section className="preference-row section-gap" aria-labelledby="hero-density-heading">
+        <div>
+          <span className="kicker">Room headers</span>
+          <h2 id="hero-density-heading">How much header<br /><em>each room shows.</em></h2>
+          <p>Every room header carries the same toggle. This choice is stored on this device.</p>
+        </div>
+        <div className="preference-options" role="group" aria-label="Room header density">
+          {HERO_DENSITIES.map((option) => {
+            const selected = option.id === heroDensity
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={`preference-option ${selected ? 'is-selected' : ''}`}
+                aria-pressed={selected}
+                onClick={() => onHeroDensity(option.id)}
+              >
+                <span className={`preference-preview preference-preview-${option.id}`} aria-hidden="true">
+                  <i /><i /><i />
+                </span>
+                <strong>{option.name}</strong>
+                <small>{option.description}</small>
+                {selected && <span className="preference-state"><Check size={13} /> Active</span>}
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
       <section className="theme-note">
         <span>LOCAL PREFERENCE</span>
-        <p>Themes are presentation-only and are stored in your browser. Grok session data never leaves the local dashboard.</p>
+        <p>Themes and header density are presentation-only and are stored in your browser. Grok session data never leaves the local dashboard.</p>
       </section>
     </>
   )

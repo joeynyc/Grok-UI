@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { controlWorkflow, runControlCommand } from '../api'
 import { usePrivacy } from '../privacy'
+import { PageIntro } from '../shell/primitives'
 import type {
   ControlSnapshot,
   WorkflowControlAction,
@@ -170,15 +171,12 @@ export function WorkflowsView({
 
   return (
     <>
-      <header className="page-intro">
-        <div className="intro-index">02</div>
-        <div>
-          <div className="kicker">Cross-session orchestration</div>
-          <h1>Every run.<br /><em>One command field.</em></h1>
-        </div>
-        <p>Track Grok workflow phases, agent allocation, failures, and recoverable controls across every UI-managed session.</p>
-        <div className="intro-rule"><span /></div>
-      </header>
+      <PageIntro
+        index="02"
+        eyebrow="Cross-session orchestration"
+        title={<>Every run.<br /><em>One command field.</em></>}
+        description="Track Grok workflow phases, agent allocation, failures, and recoverable controls across every UI-managed session."
+      />
 
       <section className="live-summary-strip workflow-summary-strip">
         <div className={`live-summary-metric ${active ? 'live-tone-lime' : 'live-tone-paper'}`}>

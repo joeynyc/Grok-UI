@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Room headers can fold to one line. Every header carries a toggle at its
+  right edge, and Themes offers the same choice as Full or Compact. Compact
+  keeps the index, kicker, and title on a single 44px row and hides the
+  description, so rosters, tables, and diffs start about 85px higher. The
+  choice is stored on the device like the theme. Changes, Control, Fleet,
+  Usage, and Runs now share the same header component as the other rooms.
 - Room shortcuts (1–9, l, m, t, /) no longer fire while a `<select>` has focus
   or while typing inside a dialog. Picking a model or permission mode with the
   keyboard, or entering a host URL, stayed on the room the user was in only by

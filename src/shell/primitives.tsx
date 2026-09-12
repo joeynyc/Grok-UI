@@ -1,26 +1,47 @@
-import { Search, X, type LucideIcon } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, Search, X, type LucideIcon } from 'lucide-react'
 import type { SessionRow } from '../types'
+import { useHeroDensity } from './hero'
 
-/** Room hero: index badge, kicker, title, and one-line description. */
+/**
+ * Room hero: index badge, kicker, title, and description, with a toggle that
+ * folds every hero to one line. The density is a device preference shared by
+ * all rooms; see ./hero.tsx.
+ */
 export function PageIntro({
   index,
   eyebrow,
+  icon: Icon,
   title,
   description,
+  className = '',
 }: {
   index: string
   eyebrow: string
+  icon?: LucideIcon
   title: React.ReactNode
-  description: string
+  description: React.ReactNode
+  className?: string
 }) {
+  const hero = useHeroDensity()
+  const compact = hero.density === 'compact'
   return (
-    <header className="page-intro">
+    <header className={`page-intro ${compact ? 'is-compact' : ''} ${className}`.trim()}>
       <div className="intro-index">{index}</div>
-      <div>
-        <div className="kicker">{eyebrow}</div>
+      <div className="intro-copy">
+        <div className="kicker">{Icon && <Icon size={14} />}{eyebrow}</div>
         <h1>{title}</h1>
       </div>
       <p>{description}</p>
+      <button
+        type="button"
+        className="intro-density"
+        onClick={hero.toggle}
+        aria-pressed={compact}
+        aria-label={compact ? 'Expand room headers' : 'Compact room headers'}
+        title={compact ? 'Expand room headers' : 'Compact room headers'}
+      >
+        {compact ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+      </button>
       <div className="intro-rule"><span /></div>
     </header>
   )

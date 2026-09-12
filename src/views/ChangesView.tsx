@@ -17,6 +17,7 @@ import type {
   WorkspaceSnapshot,
 } from '../types'
 import { usePrivacy } from '../privacy'
+import { PageIntro } from '../shell/primitives'
 
 const REPOSITORY_PROBE_LIMIT = 6
 
@@ -96,14 +97,14 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
 
   return (
     <>
-      <section className="page-intro changes-intro">
-        <div className="page-intro-index">03</div>
-        <div className="page-intro-copy">
-          <div className="kicker"><Braces size={14} /> Change surface</div>
-          <h1>See the work.<br /><em>Before it lands.</em></h1>
-        </div>
-        <p>A repository-aware view of every staged, unstaged, and untracked file in the workspace Grok is operating on.</p>
-      </section>
+      <PageIntro
+        index="03"
+        className="changes-intro"
+        icon={Braces}
+        eyebrow="Change surface"
+        title={<>See the work.<br /><em>Before it lands.</em></>}
+        description="A repository-aware view of every staged, unstaged, and untracked file in the workspace Grok is operating on."
+      />
 
       <section className="workspace-toolbar">
         <label>

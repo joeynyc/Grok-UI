@@ -13,6 +13,7 @@ import { reconcileControlSnapshot } from './control-snapshot'
 import { collectAttention, parseHash, writeHash } from './navigation'
 import { PrivacyProvider } from './privacy'
 import { CommandPalette } from './shell/CommandPalette'
+import { HERO_STORAGE_KEY, HeroDensityProvider, storedHeroDensity, type HeroDensity } from './shell/hero'
 import { MobileNav, NeedsYouBar } from './shell/MobileNav'
 import { NAV_ITEMS } from './shell/nav'
 import { AmbientGrid, AuthScreen, BootScreen, ErrorState, LoadingState, UnreachableScreen } from './shell/screens'
@@ -81,6 +82,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [theme, setTheme] = useState<ThemeId>(storedTheme)
   const [privacyMode, setPrivacyMode] = useState(storedPrivacy)
+  const [heroDensity, setHeroDensity] = useState<HeroDensity>(storedHeroDensity)
   const lastAttentionRef = useRef(0)
   const lastInteractionRef = useRef<HTMLElement | null>(null)
   const mobileNavTriggerRef = useRef<HTMLElement | null>(null)
@@ -107,6 +109,14 @@ function App() {
       // Privacy Mode still works when storage is unavailable.
     }
   }, [privacyMode])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HERO_STORAGE_KEY, heroDensity)
+    } catch {
+      // The hero toggle still works for this visit when storage is unavailable.
+    }
+  }, [heroDensity])
 
   const load = useCallback(async (force = false) => {
     if (force) setRefreshing(true)
@@ -353,10 +363,12 @@ function App() {
 
   return (
     <PrivacyProvider enabled={privacyMode}>
+      <HeroDensityProvider density={heroDensity} onChange={setHeroDensity}>
       <div
         className="app-shell"
         data-theme={theme}
         data-privacy={privacyMode ? 'on' : 'off'}
+        data-hero={heroDensity}
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           lastInteractionRef.current = event.target.closest<HTMLElement>(
@@ -477,7 +489,14 @@ function App() {
             )}
             {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
             {view === 'memory' && <MemoryView data={data} />}
-            {view === 'themes' && <ThemesView active={theme} onSelect={setTheme} />}
+            {view === 'themes' && (
+              <ThemesView
+                active={theme}
+                onSelect={setTheme}
+                heroDensity={heroDensity}
+                onHeroDensity={setHeroDensity}
+              />
+            )}
           </div>
         )}
         </main>
@@ -528,6 +547,7 @@ function App() {
           />
         )}
       </div>
+      </HeroDensityProvider>
     </PrivacyProvider>
   )
 }
