@@ -57,6 +57,8 @@ async function clearFleet(request: APIRequestContext): Promise<void> {
  */
 async function typeInto(field: Locator, value: string): Promise<void> {
   await field.click()
+  await field.focus()
+  await expect(field).toBeFocused()
   await field.fill('')
   await field.pressSequentially(value)
   await expect(field).toHaveValue(value)

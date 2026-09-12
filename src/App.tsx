@@ -424,8 +424,14 @@ function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement
-      const typing = target.matches('input, textarea, [contenteditable="true"]')
+      const target = event.target instanceof HTMLElement ? event.target : null
+      // Single-key room shortcuts must never fire while the user is entering
+      // data. A focused <select> takes letters to pick an option, and a form in
+      // a dialog (host editor, launch form) should not navigate away mid-entry.
+      const typing = target !== null && (
+        target.matches('input, textarea, select, [contenteditable="true"]')
+        || target.closest('[role="dialog"]') !== null
+      )
       if (selectedSession || remoteSession) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()

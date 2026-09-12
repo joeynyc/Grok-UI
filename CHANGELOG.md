@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Room shortcuts (1–9, l, m, t, /) no longer fire while a `<select>` has focus
+  or while typing inside a dialog. Picking a model or permission mode with the
+  keyboard, or entering a host URL, stayed on the room the user was in only by
+  luck; in WebKit it jumped rooms mid-entry and closed the host editor.
+
 ## 0.13.0 — 2026-09-12
 
 - File watching uses Node's native recursive `fs.watch` instead of one

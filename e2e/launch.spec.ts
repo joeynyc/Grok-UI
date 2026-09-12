@@ -233,6 +233,15 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByLabel('WORKTREE')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
     await expect(page).toHaveURL(/#\/live$/)
+
+    // Letters typed into a focused <select> pick options; they must not fire
+    // the single-key room shortcuts (t = Themes, m = Memory, 3 = Changes).
+    const permissions = page.getByLabel('PERMISSIONS')
+    await permissions.focus()
+    await expect(permissions).toBeFocused()
+    await page.keyboard.type('tm3')
+    await expect(page).toHaveURL(/#\/live$/)
+    await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })
       .getByRole('button', { name: /Control/ })).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: 'Primary navigation' })
