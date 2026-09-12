@@ -1,7 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 — 2026-09-12
 
+- File watching uses Node's native recursive `fs.watch` instead of one
+  descriptor per directory, so a large Grok home or repository no longer
+  exhausts file descriptors (`EMFILE`) and crashes the supervisor. A watcher
+  that still fails is closed and reported: the Live monitor falls back to its
+  liveness poll, and Changes shows Manual refresh for that workspace. Only
+  the three most recent workspaces stay watched and common build and cache
+  directories are ignored. `chokidar` is no longer a dependency.
+- An unreachable server shows a Link interrupted screen with Try again
+  instead of the remote access token gate.
 - Room heroes are about 40% shorter so the roster, tables, and diffs start
   higher on a laptop screen.
 - The primary rail reads 01 through 07 in display order, every room hero
@@ -28,15 +37,6 @@
 - Session console header shows model, agent, and start date instead of filler
   copy, and the instruments show the model where status was duplicated. While
   a session loads, the title and workspace say so instead of inventing values.
-- File watching uses Node's native recursive `fs.watch` instead of one
-  descriptor per directory, so a large Grok home or repository no longer
-  exhausts file descriptors (`EMFILE`) and crashes the supervisor. A watcher
-  that still fails is closed and reported: the Live monitor falls back to its
-  liveness poll, and Changes shows Manual refresh for that workspace. Only
-  the three most recent workspaces stay watched and common build and cache
-  directories are ignored. `chokidar` is no longer a dependency.
-- An unreachable server shows a Link interrupted screen with Try again
-  instead of the remote access token gate.
 - Live roster titles and workspaces are readable again; the roster grid still
   reserved a column for a removed index.
 - Live's Open agents count matches the roster, which includes managed
