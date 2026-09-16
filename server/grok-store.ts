@@ -3,7 +3,6 @@ import type { Dirent } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import type {
-  ActivityDay,
   DashboardPayload,
   LibraryItem,
   MemoryItem,
@@ -12,10 +11,10 @@ import type {
   SessionStatus,
 } from './types.js'
 import { SessionStateStore } from './session-state.js'
+import { buildActivity } from './activity.js'
 
 type Json = Record<string, unknown>
 
-const DAY_MS = 86_400_000
 const RECENT_MS = 24 * 60 * 60_000
 
 function asObject(value: unknown): Json {
@@ -268,35 +267,6 @@ async function collectMemory(grokHome: string): Promise<MemoryItem[]> {
   }))
   return items.filter((item): item is MemoryItem => item !== null)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-}
-
-function buildActivity(sessions: SessionRow[], days = 14): ActivityDay[] {
-  const byDate = new Map<string, ActivityDay>()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  for (let index = days - 1; index >= 0; index -= 1) {
-    const date = new Date(today.getTime() - index * DAY_MS)
-    const key = date.toISOString().slice(0, 10)
-    byDate.set(key, {
-      date: key,
-      label: date.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2),
-      sessions: 0,
-      turns: 0,
-      toolCalls: 0,
-      errors: 0,
-      linesChanged: 0,
-    })
-  }
-  for (const session of sessions) {
-    const day = byDate.get(session.updatedAt.slice(0, 10))
-    if (!day) continue
-    day.sessions += 1
-    day.turns += session.turns
-    day.toolCalls += session.toolCalls
-    day.errors += session.errors
-    day.linesChanged += session.linesAdded + session.linesRemoved
-  }
-  return [...byDate.values()]
 }
 
 export class GrokStore {

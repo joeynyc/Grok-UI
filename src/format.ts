@@ -15,6 +15,11 @@ export function formatNumber(value: number): string {
   return value >= 10_000 ? compactFormat.format(value) : integerFormat.format(value)
 }
 
+/** `1 turn`, `2 turns`. */
+export function countLabel(value: number, noun: string): string {
+  return `${formatNumber(value)} ${noun}${value === 1 ? '' : 's'}`
+}
+
 /** `0 B`, `512 B`, `12 KB`, `3.4 MB`. Non-finite and non-positive input reads as `0 B`. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Overview no longer shows a fake Health score or an unlabeled second set of
+  turn and tool totals. The 14-day matrix uses the local calendar (so tonight's
+  work stays on today), says sessions were last active that day, and the
+  metric cards, workspaces, and Activity link jump to the work. System chrome
+  follows the active theme instead of Operator lime.
+
 - Room headers can fold to one line. Every header carries a toggle at its
   right edge, and Themes offers the same choice as Full or Compact. Compact
   keeps the index, kicker, and title on a single 44px row and hides the

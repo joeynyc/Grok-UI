@@ -72,6 +72,30 @@ describe('GrokStore', () => {
     expect(JSON.stringify(payload)).not.toContain('Private memory body')
   })
 
+  it('places a just-updated session on the local calendar day in activity', async () => {
+    const grokHome = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-hud-test-'))
+    cleanup.push(grokHome)
+    const now = new Date()
+    const sessionDir = path.join(grokHome, 'sessions', '%2Ftmp%2Fdemo', 'session-today')
+    await fs.mkdir(sessionDir, { recursive: true })
+    await fs.writeFile(path.join(sessionDir, 'summary.json'), JSON.stringify({
+      info: { id: 'session-today', cwd: '/tmp/demo' },
+      generated_title: 'Today',
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    }))
+    await fs.writeFile(path.join(sessionDir, 'signals.json'), JSON.stringify({
+      turnCount: 4,
+      toolCallCount: 7,
+    }))
+
+    const payload = await new GrokStore(grokHome).dashboard()
+    const today = payload.activity.at(-1)
+    expect(today?.turns).toBe(4)
+    expect(today?.toolCalls).toBe(7)
+    expect(today?.sessions).toBe(1)
+  })
+
   it('rejects unsafe session identifiers', async () => {
     const grokHome = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-hud-test-'))
     cleanup.push(grokHome)

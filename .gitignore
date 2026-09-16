@@ -15,3 +15,6 @@ playwright-report/
 
 # Local demo-production project, raw captures, and rendered media.
 videos/
+
+# Cursor workspace settings
+.cursor/
