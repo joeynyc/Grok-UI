@@ -33,7 +33,7 @@ export function ActivityView({ data }: { data: DashboardPayload }) {
         <Panel index="03B" title="Tool distribution" meta="Session frequency">
           <RankedBars data={data.tools} empty="No tool activity has been recorded." />
         </Panel>
-        <Panel index="03C" title="Model distribution" meta="Session frequency">
+        <Panel index="03C" title="Model distribution" meta="Primary model per session">
           <RankedBars data={data.models} empty="No model activity has been recorded." />
         </Panel>
       </section>

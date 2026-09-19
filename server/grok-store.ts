@@ -129,7 +129,6 @@ function normalizeDate(input: string): string {
 async function sessionFromSummary(summaryFile: string): Promise<{
   row: SessionRow
   tools: string[]
-  models: string[]
 }> {
   const sessionDir = path.dirname(summaryFile)
   const [summary, signals, bytes] = await Promise.all([
@@ -151,10 +150,9 @@ async function sessionFromSummary(summaryFile: string): Promise<{
   const linesAdded = asNumber(signals.agentLinesAdded)
   const linesRemoved = asNumber(signals.agentLinesRemoved)
   const rawContextUsage = asNumber(signals.contextWindowUsage)
-  const models = asStringArray(signals.modelsUsed)
   const primaryModel = asString(signals.primaryModelId)
     || asString(summary.current_model_id)
-    || models[0]
+    || asStringArray(signals.modelsUsed)[0]
     || 'unknown'
 
   return {
@@ -185,7 +183,6 @@ async function sessionFromSummary(summaryFile: string): Promise<{
       archived: false,
     },
     tools: asStringArray(signals.toolsUsed),
-    models: models.length ? models : [primaryModel],
   }
 }
 
@@ -316,8 +313,10 @@ export class GrokStore {
     const tools = new Map<string, number>()
     const workspaces = new Map<string, number>()
 
-    sessionData.forEach(({ row, models: sessionModels, tools: sessionTools }) => {
-      sessionModels.forEach((model) => models.set(model, (models.get(model) || 0) + 1))
+    // Each session counts once, by its primary model, so the mix sums to the
+    // session count and matches the Model column in Sessions.
+    sessionData.forEach(({ row, tools: sessionTools }) => {
+      models.set(row.model, (models.get(row.model) || 0) + 1)
       sessionTools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1))
       workspaces.set(row.workspace, (workspaces.get(row.workspace) || 0) + 1)
     })

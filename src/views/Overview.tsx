@@ -116,7 +116,7 @@ export function Overview({
           <Panel index="04" title="Tool signature" meta="Session frequency">
             <RankedBars data={data.tools.slice(0, 6)} empty="No tool signals recorded yet." />
           </Panel>
-          <Panel index="05" title="Model mix" meta={`${data.models.length} in rotation`}>
+          <Panel index="05" title="Model mix" meta="Primary model per session">
             <ModelMix data={data.models} />
           </Panel>
           <Panel index="06" title="Workspace pulse" meta={`${data.stats.workspaces} indexed`}>

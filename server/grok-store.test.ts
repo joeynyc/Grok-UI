@@ -39,7 +39,7 @@ describe('GrokStore', () => {
       agentLinesAdded: 120,
       agentLinesRemoved: 20,
       toolsUsed: ['read_file', 'write'],
-      modelsUsed: ['grok-build'],
+      modelsUsed: ['grok-build', 'grok-build-fast'],
     }))
     await fs.writeFile(path.join(sessionDir, 'updates.jsonl'), '{"private":"not parsed"}\n')
     await fs.mkdir(path.join(grokHome, 'bundled', 'skills', 'design'), { recursive: true })
@@ -68,6 +68,8 @@ describe('GrokStore', () => {
       contextUsage: 0.42,
     })
     expect(payload.tools.map((item) => item.name)).toEqual(['read_file', 'write'])
+    // One session, one primary model: secondary models do not inflate the mix.
+    expect(payload.models).toEqual([{ name: 'grok-build', value: 1 }])
     expect(JSON.stringify(payload)).not.toContain('not parsed')
     expect(JSON.stringify(payload)).not.toContain('Private memory body')
   })

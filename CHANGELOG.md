@@ -6,7 +6,9 @@
   turn and tool totals. The 14-day matrix uses the local calendar (so tonight's
   work stays on today), says sessions were last active that day, and the
   metric cards, workspaces, and Activity link jump to the work. System chrome
-  follows the active theme instead of Operator lime.
+  follows the active theme instead of Operator lime. Model mix counts each
+  session once by its primary model, so it sums to the session count and
+  matches the Model column in Sessions.
 
 - Room headers can fold to one line. Every header carries a toggle at its
   right edge, and Themes offers the same choice as Full or Compact. Compact
