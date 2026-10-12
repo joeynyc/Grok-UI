@@ -21,6 +21,7 @@ export function LiveView({
   data,
   control,
   setup,
+  setupError,
   connected,
   onOpenSession,
   onRefresh,
@@ -31,6 +32,7 @@ export function LiveView({
   data: DashboardPayload
   control: ControlSnapshot | null
   setup: SetupStatus | null
+  setupError: string
   connected: boolean
   onOpenSession: (session: SessionRow | string) => void
   onRefresh: () => void
@@ -38,6 +40,11 @@ export function LiveView({
 }) {
   const roster = useMemo(() => buildRoster(live, control), [control, live])
   const selected = roster[0]
+  const firstRun = shouldShowFirstRun({
+    setupReady: setup?.ready,
+    hasRoster: Boolean(selected),
+    archivedSessions: data.stats.sessions,
+  })
 
   return (
     <>
@@ -47,7 +54,7 @@ export function LiveView({
         title={<>In the loop.<br /><em>Right now.</em></>}
         description="Watch every running Grok session as it works, waits, or needs you. Start one here, or keep using the CLI — both show up in this room."
       />
-      <section className="live-summary-strip">
+      {!firstRun && <section className="live-summary-strip">
         <LiveSummaryMetric
           label="Open agents"
           value={String(roster.length)}
@@ -72,16 +79,13 @@ export function LiveView({
           detail="local session changes"
           tone={connected ? 'lime' : 'coral'}
         />
-      </section>
+      </section>}
 
-      {shouldShowFirstRun({
-        setupReady: setup?.ready,
-        hasRoster: Boolean(selected),
-        archivedSessions: data.stats.sessions,
-      }) ? (
+      {firstRun ? (
         <FirstRunOnboarding
           connected={connected}
           setup={setup}
+          setupError={setupError}
           data={data}
           live={live}
           control={control}
@@ -122,6 +126,7 @@ export function LiveView({
 function FirstRunOnboarding({
   connected,
   setup,
+  setupError,
   data,
   live,
   control,
@@ -131,6 +136,7 @@ function FirstRunOnboarding({
 }: {
   connected: boolean
   setup: SetupStatus | null
+  setupError: string
   data: DashboardPayload
   live: LiveSnapshot | null
   control: ControlSnapshot | null
@@ -150,6 +156,7 @@ function FirstRunOnboarding({
   }
   const cli = setup?.checks.find((check) => check.id === 'cli')
   const auth = setup?.checks.find((check) => check.id === 'auth')
+  const node = setup?.checks.find((check) => check.id === 'node')
   const state = setup?.checks.find((check) => check.id === 'state')
   const steps: Array<{
     index: string
@@ -158,6 +165,13 @@ function FirstRunOnboarding({
     command: string
     state: SetupCheckState | 'checking'
   }> = [
+    {
+      index: '00',
+      label: 'Check Node.js',
+      copy: node?.detail || 'Checking the Node.js runtime…',
+      command: 'node --version',
+      state: node?.state || 'checking',
+    },
     {
       index: '01',
       label: 'Verify the CLI',
@@ -182,6 +196,30 @@ function FirstRunOnboarding({
       state: 'action',
     },
   ]
+  // A failed diagnostics request proves nothing is missing, so the launch
+  // form stays available rather than waiting on a check that will not land.
+  const canLaunch = Boolean(setup?.ready || setupError)
+  const currentStep = setup?.ready || setupError ? undefined : steps.slice(0, -1).find((step) => step.state !== 'ready')
+  const renderStep = (step: typeof steps[number]) => (
+    <article className={`setup-${step.state}`} key={step.index}>
+      <span>{step.index}</span>
+      <div>
+        <small className={`setup-state setup-state-${step.state}`}>
+          {step.state === 'ready'
+            ? <><Check size={11} /> Ready</>
+            : step.state === 'action'
+              ? <><CircleAlert size={11} /> Action needed</>
+              : <><TimerReset size={11} /> Checking</>}
+        </small>
+        <h3>{step.label}</h3>
+        <p>{step.copy}</p>
+      </div>
+      <button type="button" onClick={() => void copy(step.command)} aria-label={`Copy ${step.command}`}>
+        <code>{step.command}</code>
+        {copied === step.command ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+    </article>
+  )
   return (
     <section className="first-run section-gap">
       <div className="first-run-head">
@@ -189,9 +227,9 @@ function FirstRunOnboarding({
           <span className="kicker">
             {setup?.ready
               ? 'Ready to start'
-              : setup ? 'Setup needed' : 'Checking setup'}
+              : setup ? 'Setup needed' : setupError ? 'Setup check failed' : 'Checking setup'}
           </span>
-          <h2>Zero to live<br /><em>in three moves.</em></h2>
+          <h2>Zero to live.</h2>
         </div>
         <div className="first-run-status">
           <span className={cli?.state === 'ready' ? 'is-ready' : 'needs-action'}><i /> Grok CLI</span>
@@ -199,7 +237,9 @@ function FirstRunOnboarding({
           <span><i /> First session</span>
         </div>
       </div>
-      <div className="first-run-launch">
+      {currentStep && <div className="first-run-steps first-run-current">{renderStep(currentStep)}</div>}
+      {setupError && <p className="first-run-error" role="status">{setupError}. Use Recheck setup to try again, or start a session below.</p>}
+      {canLaunch && <div className="first-run-launch">
         <SessionLaunchForm
           data={data}
           live={live}
@@ -209,29 +249,13 @@ function FirstRunOnboarding({
           onRefresh={onRefreshControl}
           onLaunched={(session) => onOpenSession(session.id)}
         />
-      </div>
-      <div className="first-run-steps">
-        {steps.map((step) => (
-          <article className={`setup-${step.state}`} key={step.index}>
-            <span>{step.index}</span>
-            <div>
-              <small className={`setup-state setup-state-${step.state}`}>
-                {step.state === 'ready'
-                  ? <><Check size={11} /> Ready</>
-                  : step.state === 'action'
-                    ? <><CircleAlert size={11} /> Action needed</>
-                    : <><TimerReset size={11} /> Checking</>}
-              </small>
-              <h3>{step.label}</h3>
-              <p>{step.copy}</p>
-            </div>
-            <button type="button" onClick={() => void copy(step.command)}>
-              <code>{step.command}</code>
-              {copied === step.command ? <Check size={15} /> : <Copy size={15} />}
-            </button>
-          </article>
-        ))}
-      </div>
+      </div>}
+      <details className="first-run-checklist">
+        <summary>Setup checklist and CLI commands</summary>
+        <div className="first-run-steps">
+          {steps.filter((step) => step !== currentStep).map(renderStep)}
+        </div>
+      </details>
       <footer>
         <span>
           {setup?.ready && connected

@@ -28,6 +28,12 @@ The connection supports:
 
 Each permission request stays pending as a server-side promise until an authenticated user selects one of Grok’s options or cancels the turn. The browser cannot manufacture an option that Grok did not advertise.
 
+Attaching a recorded session immediately runs its first follow-up. Further
+prompts queue while a turn is active. Stop clears the entire pending queue;
+new prompts are rejected while cancellation is pending so they cannot silently
+disappear or run after the stopped turn. Late plan notifications cannot reopen
+a stopping lane, and late plan-exit requests are abandoned.
+
 ## Usage plane
 
 `UsageLedger` normalizes the token and cost telemetry already owned by
@@ -43,6 +49,16 @@ Reports are time-bounded and can group by project, model, session, or agent.
 The ledger is local-only and uses the same authenticated API boundary as the
 rest of the dashboard.
 
+The browser reloads Usage on manual refresh and coalesces live session updates
+behind an active report request. Each report shows its own generation time.
+Filter changes cancel obsolete reads, and a saved budget cannot be overwritten
+by a budget read started before the edit.
+
+`UsageBudgetManager` serializes complete read-modify-write operations, including
+alert generation and acknowledgement. Concurrent HTTP requests therefore read
+the latest durable budget state before saving, and a failed operation does not
+block the next one.
+
 ## Durable UI state
 
 `SessionStateStore` atomically persists Grok UI-owned annotations and managed ACP lanes to `~/.grok-ui/state.json` with user-only file permissions. It never mutates Grok’s session directories. Rename and archive are therefore reversible UI overlays.
@@ -52,6 +68,14 @@ state file retains at most 10,000 normalized usage observations and migrates
 older state in place. If the server exits during a turn, the lane restores as
 idle with a `server_restarted` stop reason; the user can explicitly resume it
 through `session/load` and `session/prompt`.
+
+Only a missing state file starts an empty store. An unreadable, malformed,
+invalid, or future-version file is preserved and stops startup with a recovery
+message. Writes stay disabled for that store instance until the file is repaired
+and the server restarts. Valid v1 and v2 files still migrate to v3. Mutations are
+serialized, persisted through a temporary file, and only then published to
+readers. A failed write leaves the last durable snapshot intact and does not
+poison subsequent writes.
 
 ## Workspace plane
 
@@ -255,6 +279,10 @@ a second `ARCHITECTURE.md`; update this map when ownership moves.
 | Nav item registry (indices, shortcuts) and theme registry | `src/shell/nav.ts`, `src/shell/themes.ts` |
 | Room header component and Full/Compact density preference | `src/shell/primitives.tsx`, `src/shell/hero.tsx` |
 | Shared number and time formatting | `src/format.ts` |
+| Bounded JSON request deadlines, parsing, and caller cancellation | `src/request.ts`, `src/api.ts` |
+| Usage report freshness and budget read coordination | `src/hooks/useUsageReport.ts` |
+| Keyed workspace diff selection and cancellation | `src/hooks/useWorkspaceDiff.ts` |
+| Shared local/remote timeline rendering and reading position | `src/views/SessionTimeline.tsx` |
 | Stylesheet order and per-room CSS files | `src/styles/index.css` |
 | Fleet page coordination, selection, filters, and registry actions | `src/views/FleetView.tsx` |
 | Fleet selectors, caps, formatting, and availability derivation | `src/views/fleet/model.ts` |

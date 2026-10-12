@@ -31,9 +31,14 @@ import type {
   PlanAction,
   SessionSlash,
 } from './types'
+import { readJsonResponse, requestJson } from './request'
 
-const JSON_RESPONSE_CAP = 5 * 1024 * 1024
-const DEFAULT_TIMEOUT_MS = 12_000
+// Calls that hand work to Grok carry no client deadline: the server keeps
+// going after a timeout, so reporting failure would invite a duplicate send.
+const WORK_STARTED = null
+// Setup runs `grok version` (5s) then `grok models` (10s) on the server.
+const SETUP_TIMEOUT_MS = 30_000
+
 const FLEET_HOST_CAP = 32
 const FLEET_STATUSES = new Set([
   'connecting',
@@ -45,36 +50,6 @@ const FLEET_STATUSES = new Set([
   'unauthorized',
   'unavailable',
 ])
-
-async function json<T>(response: Response, fallback: string): Promise<T> {
-  const declaredLength = Number(response.headers.get('content-length') || 0)
-  if (declaredLength > JSON_RESPONSE_CAP) throw new Error(`${fallback}: response exceeded the safe size limit`)
-  const text = await response.text()
-  if (text.length > JSON_RESPONSE_CAP) throw new Error(`${fallback}: response exceeded the safe size limit`)
-  let payload: { error?: string } = {}
-  try {
-    payload = text ? JSON.parse(text) as { error?: string } : {}
-  } catch {
-    throw new Error(`${fallback}: invalid JSON response`)
-  }
-  if (!response.ok) throw new Error(payload.error || `${fallback} (${response.status})`)
-  return payload as T
-}
-
-async function boundedFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(input, { ...init, signal: controller.signal })
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1_000)} seconds`)
-    }
-    throw error
-  } finally {
-    window.clearTimeout(timer)
-  }
-}
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -251,42 +226,56 @@ function parseRemoteCommandReceipt(value: unknown): RemoteCommandReceipt {
 }
 
 export async function getDashboard(force = false): Promise<DashboardPayload> {
-  const response = await fetch(`/api/dashboard${force ? '?refresh=1' : ''}`, {
-    headers: { Accept: 'application/json' },
-  })
-  return json<DashboardPayload>(response, 'Dashboard request failed')
+  return requestJson<DashboardPayload>(
+    `/api/dashboard${force ? '?refresh=1' : ''}`,
+    'Dashboard request failed',
+    {
+      headers: { Accept: 'application/json' },
+    },
+  )
 }
 
 export async function getLiveSnapshot(): Promise<LiveSnapshot> {
-  const response = await fetch('/api/live', { headers: { Accept: 'application/json' } })
-  return json<LiveSnapshot>(response, 'Live runtime request failed')
+  return requestJson<LiveSnapshot>(
+    '/api/live',
+    'Live runtime request failed',
+    {
+      headers: { Accept: 'application/json' },
+    },
+  )
 }
 
 export async function getRuntimeSnapshot(force = false): Promise<RuntimeSnapshot> {
-  const response = await fetch(`/api/runtime${force ? '?refresh=1' : ''}`, {
-    headers: { Accept: 'application/json' },
-  })
-  return json<RuntimeSnapshot>(response, 'Runtime intelligence request failed')
+  return requestJson<RuntimeSnapshot>(
+    `/api/runtime${force ? '?refresh=1' : ''}`,
+    'Runtime intelligence request failed',
+    {
+      headers: { Accept: 'application/json' },
+    },
+  )
 }
 
 export async function getUsageReport(input: {
   period: UsagePeriod
   scope: UsageScope
   groupBy: UsageGroupDimension
-}): Promise<UsageReport> {
+}, signal?: AbortSignal): Promise<UsageReport> {
   const query = new URLSearchParams(input)
-  return json(
-    await fetch(`/api/usage?${query.toString()}`, {
-      headers: { Accept: 'application/json' },
-    }),
+  return requestJson(
+    `/api/usage?${query.toString()}`,
     'Usage ledger request failed',
+    {
+      signal,
+      headers: { Accept: 'application/json' },
+    },
   )
 }
 
-export async function getUsageBudgets(): Promise<UsageBudgetSnapshot> {
-  return json(
-    await fetch('/api/usage/budgets', { headers: { Accept: 'application/json' } }),
+export async function getUsageBudgets(signal?: AbortSignal): Promise<UsageBudgetSnapshot> {
+  return requestJson(
+    '/api/usage/budgets',
     'Usage budgets request failed',
+    { signal, headers: { Accept: 'application/json' } },
   )
 }
 
@@ -301,28 +290,33 @@ export async function saveUsageBudget(input: {
   currency?: string
   enabled?: boolean
 }): Promise<{ budget: UsageBudget; snapshot: UsageBudgetSnapshot }> {
-  return json(
-    await fetch('/api/usage/budgets', {
+  return requestJson(
+    '/api/usage/budgets',
+    'Unable to save usage budget',
+    {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-    }),
-    'Unable to save usage budget',
+    },
   )
 }
 
 export async function deleteUsageBudget(id: string): Promise<void> {
-  const response = await fetch(`/api/usage/budgets/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  if (!response.ok) await json(response, 'Unable to delete usage budget')
+  await requestJson(
+    `/api/usage/budgets/${encodeURIComponent(id)}`,
+    'Unable to delete usage budget',
+    { method: 'DELETE' },
+  )
 }
 
 export async function acknowledgeUsageAlert(id: string): Promise<UsageBudgetSnapshot> {
-  return json(
-    await fetch(`/api/usage/alerts/${encodeURIComponent(id)}/acknowledge`, {
+  return requestJson(
+    `/api/usage/alerts/${encodeURIComponent(id)}/acknowledge`,
+    'Unable to acknowledge usage alert',
+    {
       method: 'POST',
       headers: { Accept: 'application/json' },
-    }),
-    'Unable to acknowledge usage alert',
+    },
   )
 }
 
@@ -344,7 +338,7 @@ export async function downloadUsageExport(input: {
     headers: { Accept: input.format === 'json' ? 'application/json' : 'text/csv' },
   })
   if (!response.ok) {
-    await json(response, 'Usage export failed')
+    await readJsonResponse(response, 'Usage export failed')
     return
   }
   const blob = await response.blob()
@@ -357,28 +351,34 @@ export async function downloadUsageExport(input: {
 }
 
 export async function getSetupStatus(force = false): Promise<SetupStatus> {
-  return json(
-    await fetch(`/api/setup${force ? '?refresh=1' : ''}`, {
-      headers: { Accept: 'application/json' },
-    }),
+  return requestJson(
+    `/api/setup${force ? '?refresh=1' : ''}`,
     'Setup diagnostics request failed',
+    {
+      headers: { Accept: 'application/json' },
+    },
+    SETUP_TIMEOUT_MS,
   )
 }
 
 export async function getAuthStatus(): Promise<{ required: boolean; authenticated: boolean }> {
-  return json(await fetch('/api/auth/status'), 'Authentication check failed')
+  return requestJson('/api/auth/status', 'Authentication check failed')
 }
 
 export async function login(token: string): Promise<void> {
-  await json(await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  }), 'Sign in failed')
+  await requestJson(
+    '/api/auth/login',
+    'Sign in failed',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    },
+  )
 }
 
 export async function getControlSnapshot(): Promise<ControlSnapshot> {
-  return json(await fetch('/api/control'), 'Control channel request failed')
+  return requestJson('/api/control', 'Control channel request failed')
 }
 
 export async function createControlSession(input: {
@@ -390,18 +390,20 @@ export async function createControlSession(input: {
   planMode?: boolean
   worktree?: boolean
 }): Promise<ControlSession> {
-  return json(await fetch('/api/control/sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }), 'Unable to create Grok session')
+  return requestJson(
+    '/api/control/sessions',
+    'Unable to create Grok session',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function listControlModels(): Promise<ModelOption[]> {
-  const payload = await json<{ models: ModelOption[] }>(
-    await fetch('/api/control/models'),
-    'Unable to list models',
-  )
+  const payload = await requestJson<{ models: ModelOption[] }>('/api/control/models', 'Unable to list models')
   return payload.models || []
 }
 
@@ -410,11 +412,16 @@ export async function reviewControlPlan(
   action: PlanAction,
   note = '',
 ): Promise<ControlSession> {
-  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, note }),
-  }), 'Unable to review plan')
+  return requestJson(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/plan`,
+    'Unable to review plan',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, note }),
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function runControlCommand(
@@ -422,26 +429,33 @@ export async function runControlCommand(
   command: SessionSlash,
   argument = '',
 ): Promise<ControlSession> {
-  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/command`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, argument }),
-  }), 'Unable to run session command')
+  return requestJson(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/command`,
+    'Unable to run session command',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, argument }),
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function setControlMode(sessionId: string, modeId: string): Promise<ControlSession> {
-  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/mode`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modeId }),
-  }), 'Unable to set session mode')
+  return requestJson(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/mode`,
+    'Unable to set session mode',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modeId }),
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function inspectWorkspace(cwd: string): Promise<InspectSnapshot> {
-  return json(
-    await fetch(`/api/inspect?cwd=${encodeURIComponent(cwd)}`),
-    'Unable to inspect workspace',
-  )
+  return requestJson(`/api/inspect?cwd=${encodeURIComponent(cwd)}`, 'Unable to inspect workspace')
 }
 
 export async function exportSessionMarkdown(sessionId: string): Promise<void> {
@@ -457,26 +471,40 @@ export async function exportSessionMarkdown(sessionId: string): Promise<void> {
 }
 
 export async function deleteRecordedSession(sessionId: string): Promise<void> {
-  await json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-  }), 'Unable to delete session')
+  await requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    'Unable to delete session',
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 export async function promptControlSession(
   sessionId: string,
   input: { cwd: string; prompt: string },
 ): Promise<ControlSession> {
-  return json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }), 'Unable to send prompt')
+  return requestJson(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/prompt`,
+    'Unable to send prompt',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function cancelControlSession(sessionId: string): Promise<void> {
-  await json(await fetch(`/api/control/sessions/${encodeURIComponent(sessionId)}/cancel`, {
-    method: 'POST',
-  }), 'Unable to cancel session')
+  await requestJson(
+    `/api/control/sessions/${encodeURIComponent(sessionId)}/cancel`,
+    'Unable to cancel session',
+    {
+      method: 'POST',
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function controlWorkflow(
@@ -484,44 +512,51 @@ export async function controlWorkflow(
   workflowId: string,
   action: WorkflowControlAction,
 ): Promise<void> {
-  await json(await fetch(
+  await requestJson(
     `/api/control/sessions/${encodeURIComponent(sessionId)}/workflows/${encodeURIComponent(workflowId)}`,
+    `Unable to ${action} workflow`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action }),
     },
-  ), `Unable to ${action} workflow`)
+    WORK_STARTED,
+  )
 }
 
 export async function resolveControlPermission(permissionId: string, optionId?: string): Promise<void> {
-  await json(await fetch(`/api/control/permissions/${encodeURIComponent(permissionId)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ optionId }),
-  }), 'Unable to resolve permission')
-}
-
-export async function getWorkspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
-  return json(
-    await fetch(`/api/workspace?cwd=${encodeURIComponent(cwd)}`),
-    'Workspace request failed',
+  await requestJson(
+    `/api/control/permissions/${encodeURIComponent(permissionId)}`,
+    'Unable to resolve permission',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ optionId }),
+    },
+    WORK_STARTED,
   )
 }
 
-export async function getWorkspaceDiff(cwd: string, file: string): Promise<WorkspaceDiff> {
-  return json(
-    await fetch(`/api/workspace/diff?cwd=${encodeURIComponent(cwd)}&file=${encodeURIComponent(file)}`),
+export async function getWorkspaceSnapshot(cwd: string, signal?: AbortSignal): Promise<WorkspaceSnapshot> {
+  return requestJson(`/api/workspace?cwd=${encodeURIComponent(cwd)}`, 'Workspace request failed', { signal })
+}
+
+export async function getWorkspaceDiff(cwd: string, file: string, signal?: AbortSignal): Promise<WorkspaceDiff> {
+  return requestJson(
+    `/api/workspace/diff?cwd=${encodeURIComponent(cwd)}&file=${encodeURIComponent(file)}`,
     'Diff request failed',
+    { signal },
   )
 }
 
-export async function getSessionWorkbench(sessionId: string): Promise<SessionWorkbenchData> {
-  return json(
-    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/workbench`, {
-      headers: { Accept: 'application/json' },
-    }),
+export async function getSessionWorkbench(sessionId: string, signal?: AbortSignal): Promise<SessionWorkbenchData> {
+  return requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}/workbench`,
     'Session console request failed',
+    {
+      signal,
+      headers: { Accept: 'application/json' },
+    },
   )
 }
 
@@ -529,34 +564,45 @@ export async function updateSession(
   sessionId: string,
   patch: { title?: string; archived?: boolean },
 ): Promise<SessionRow> {
-  return json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  }), 'Unable to update session')
+  return requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    'Unable to update session',
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    },
+  )
 }
 
 export async function cancelWorkbenchSession(sessionId: string): Promise<void> {
-  await json(await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/cancel`, {
-    method: 'POST',
-  }), 'Unable to cancel session')
+  await requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}/cancel`,
+    'Unable to cancel session',
+    {
+      method: 'POST',
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function getFleetSnapshot(): Promise<FleetSnapshot> {
-  return parseFleetSnapshot(await json<unknown>(
-    await boundedFetch('/api/fleet', { headers: { Accept: 'application/json' } }),
+  return parseFleetSnapshot(await requestJson<unknown>(
+    '/api/fleet',
     'Fleet registry request failed',
+    { headers: { Accept: 'application/json' } },
   ))
 }
 
 export async function createFleetHost(input: FleetHostInput): Promise<FleetHostMutationResponse> {
-  return parseFleetMutation(await json<unknown>(
-    await boundedFetch('/api/fleet/hosts', {
+  return parseFleetMutation(await requestJson<unknown>(
+    '/api/fleet/hosts',
+    'Unable to register host',
+    {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-    }),
-    'Unable to register host',
+    },
   ))
 }
 
@@ -564,53 +610,56 @@ export async function updateFleetHost(
   id: string,
   input: FleetHostInput,
 ): Promise<FleetHostMutationResponse> {
-  return parseFleetMutation(await json<unknown>(
-    await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}`, {
+  return parseFleetMutation(await requestJson<unknown>(
+    `/api/fleet/hosts/${encodeURIComponent(id)}`,
+    'Unable to update host',
+    {
       method: 'PATCH',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-    }),
-    'Unable to update host',
+    },
   ))
 }
 
 export async function deleteFleetHost(id: string): Promise<void> {
-  const response = await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-  })
-  if (!response.ok) await json(response, 'Unable to remove host')
+  await requestJson(
+    `/api/fleet/hosts/${encodeURIComponent(id)}`,
+    'Unable to remove host',
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 export async function refreshFleetHost(id: string): Promise<FleetSnapshot> {
-  return parseFleetSnapshot(await json<unknown>(
-    await boundedFetch(`/api/fleet/hosts/${encodeURIComponent(id)}/refresh`, {
+  return parseFleetSnapshot(await requestJson<unknown>(
+    `/api/fleet/hosts/${encodeURIComponent(id)}/refresh`,
+    'Unable to refresh host',
+    {
       method: 'POST',
       headers: { Accept: 'application/json' },
-    }, 20_000),
-    'Unable to refresh host',
+    },
+    20_000,
   ))
 }
 
 export async function getFleetSessionDetail(hostId: string, sessionId: string): Promise<AgentSessionDetail> {
-  return parseFleetSessionDetail(await json<unknown>(
-    await boundedFetch(
-      `/api/fleet/hosts/${encodeURIComponent(hostId)}/sessions/${encodeURIComponent(sessionId)}`,
-      { headers: { Accept: 'application/json' } },
-    ),
+  return parseFleetSessionDetail(await requestJson<unknown>(
+    `/api/fleet/hosts/${encodeURIComponent(hostId)}/sessions/${encodeURIComponent(sessionId)}`,
     'Remote session request failed',
+    { headers: { Accept: 'application/json' } },
   ))
 }
 
 export async function getRemoteSession(
   hostId: string,
   sessionId: string,
+  signal?: AbortSignal,
 ): Promise<RemoteSessionSnapshot> {
-  return parseRemoteSessionSnapshot(await json(
-    await boundedFetch(
-      `/api/fleet/hosts/${encodeURIComponent(hostId)}/remote-sessions/${encodeURIComponent(sessionId)}`,
-      { headers: { Accept: 'application/json' } },
-    ),
+  return parseRemoteSessionSnapshot(await requestJson(
+    `/api/fleet/hosts/${encodeURIComponent(hostId)}/remote-sessions/${encodeURIComponent(sessionId)}`,
     'Remote session request failed',
+    { signal, headers: { Accept: 'application/json' } },
   ))
 }
 
@@ -623,13 +672,14 @@ async function remoteCommand(
   body: Record<string, unknown>,
   fallback: string,
 ): Promise<RemoteCommandReceipt> {
-  const receipt = parseRemoteCommandReceipt(await json(
-    await boundedFetch(url, {
+  const receipt = parseRemoteCommandReceipt(await requestJson(
+    url,
+    fallback,
+    {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    }),
-    fallback,
+    },
   ))
   if (receipt.status === 'failed') throw new Error(receipt.error || fallback)
   return receipt
@@ -692,23 +742,35 @@ export async function resolveRemotePermission(
   )
 }
 
-export async function getSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
-  return json(
-    await boundedFetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview`, {
-      headers: { Accept: 'application/json' },
-    }),
+export async function getSessionPreview(sessionId: string, signal?: AbortSignal): Promise<PreviewSnapshot> {
+  return requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}/preview`,
     'Preview request failed',
+    {
+      signal,
+      headers: { Accept: 'application/json' },
+    },
   )
 }
 
 export async function startSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
-  return json(await boundedFetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview/start`, {
-    method: 'POST',
-  }), 'Unable to start preview')
+  return requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}/preview/start`,
+    'Unable to start preview',
+    {
+      method: 'POST',
+    },
+    WORK_STARTED,
+  )
 }
 
 export async function stopSessionPreview(sessionId: string): Promise<PreviewSnapshot> {
-  return json(await boundedFetch(`/api/sessions/${encodeURIComponent(sessionId)}/preview/stop`, {
-    method: 'POST',
-  }), 'Unable to stop preview')
+  return requestJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}/preview/stop`,
+    'Unable to stop preview',
+    {
+      method: 'POST',
+    },
+    WORK_STARTED,
+  )
 }

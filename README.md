@@ -460,6 +460,9 @@ src/
                             local session timeline, preview, and operations
   views/RemoteSessionWorkbench.tsx
                             live remote conversation and safe controls
+  views/SessionTimeline.tsx shared conversation rendering and reading position
+  hooks/                  Usage freshness and cancellable workspace diffs
+  request.ts              bounded JSON reads, deadlines, and cancellation
   App.tsx                 routing, data loading, event-stream client, shortcuts
   shell/                  chrome: sidebar, top bar, mobile nav, palette, access
                             screens, shared primitives, nav and theme registries

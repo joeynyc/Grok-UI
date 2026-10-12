@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Attaching a recorded session starts its first follow-up immediately. Stop
+  clears every queued prompt and rejects new prompts until cancellation ends,
+  even when late plan notifications arrive.
+- Unreadable UI state or a malformed collection stops startup with a recovery
+  message and preserves the existing file. A single invalid record is skipped
+  after the original file is backed up, and records the loader would reject
+  are no longer written. Failed writes leave the durable snapshot intact and no
+  longer prevent later writes from succeeding.
+- Prompts, new sessions, and other calls that start work no longer report a
+  client timeout while the server is still carrying them out, and first-run
+  setup offers the launch form when the diagnostics check itself fails.
+- Concurrent budget edits, removals, and alert acknowledgements retain each
+  completed operation instead of overwriting it with an earlier snapshot.
+- Usage follows manual refresh and live session updates and shows when its
+  report was generated. Diff selection cancels obsolete reads so a delayed
+  patch cannot appear under another file's heading. JSON request deadlines now
+  cover the response body as well as the headers.
+- Session consoles share timeline behavior, preserve an unfinished rename,
+  and keep the reading position during updates until Latest is chosen.
+- Mobile starts with compact headers unless a preference was saved. First-run
+  setup puts the next required action first, and the launch form leads with
+  workspace and instruction. Text and toggles are easier to read, empty runtime
+  panels take less space, Event Horizon is quieter, and Minimal Calm commands
+  use legible theme colors.
+
 - Overview no longer shows a fake Health score or an unlabeled second set of
   turn and tool totals. The 14-day matrix uses the local calendar (so tonight's
   work stays on today), says sessions were last active that day, and the

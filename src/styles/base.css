@@ -21,10 +21,10 @@
   --coral-soft: rgba(255, 101, 79, 0.12);
   --amber: #ffca57;
   --type-micro: 8px;
-  --type-label: 9px;
-  --type-meta: 10px;
-  --type-body: 11px;
-  --type-control: 12px;
+  --type-label: 10px;
+  --type-meta: 11px;
+  --type-body: 13px;
+  --type-control: 14px;
   --sidebar: 236px;
   --topbar: 64px;
   --mobile-nav-height: 68px;
@@ -78,7 +78,8 @@ a {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-select:focus-visible {
+select:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--lime);
   outline-offset: 2px;
 }

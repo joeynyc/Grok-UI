@@ -301,11 +301,27 @@ export class GrokController extends EventEmitter {
       }
     }
     const existing = this.sessions.get(input.sessionId)
-      || sessionSeed(input.sessionId, cwd, input.prompt)
+    if (existing?.state === 'stopping' || existing?.cancellationStatus === 'requested') {
+      throw new Error('Wait for Stop to finish before sending another prompt.')
+    }
+    if (existing && ['working', 'starting', 'attention'].includes(existing.state)) {
+      const session: ControlSession = {
+        ...existing,
+        queue: [...existing.queue, {
+          id: `queue-${Date.now()}`,
+          text: input.prompt,
+          createdAt: now(),
+        }].slice(-20),
+        updatedAt: now(),
+      }
+      this.sessions.set(session.id, session)
+      this.emitSnapshot()
+      return session
+    }
     const session: ControlSession = {
-      ...existing,
+      ...(existing || sessionSeed(input.sessionId, cwd, input.prompt)),
       cwd,
-      title: existing.title || compactPrompt(input.prompt),
+      title: existing?.title || compactPrompt(input.prompt),
       state: 'working',
       updatedAt: now(),
       lastPrompt: input.prompt,
@@ -317,16 +333,6 @@ export class GrokController extends EventEmitter {
     }
     this.sessions.set(session.id, session)
     this.emitSnapshot()
-    if (['working', 'starting', 'attention', 'stopping'].includes(existing.state)) {
-      const queued = [...session.queue, {
-        id: `queue-${Date.now()}`,
-        text: input.prompt,
-        createdAt: now(),
-      }].slice(-20)
-      this.sessions.set(session.id, { ...session, queue: queued, updatedAt: now() })
-      this.emitSnapshot()
-      return this.sessions.get(session.id)!
-    }
     void this.runPrompt(session.id, input.prompt)
     return session
   }
@@ -426,6 +432,7 @@ export class GrokController extends EventEmitter {
       cancellationStatus: 'requested',
       cancelRequestedAt: requestedAt,
       cancelledAt: '',
+      queue: [],
     })
 
     for (const [permissionId, pending] of this.permissions) {
@@ -695,6 +702,7 @@ export class GrokController extends EventEmitter {
           error: '',
           cancellationStatus: 'confirmed',
           cancelledAt: timestamp,
+          queue: [],
         })
         this.emitSnapshot()
         return
@@ -715,7 +723,7 @@ export class GrokController extends EventEmitter {
     this.clearCancellationTimer(sessionId)
     const timestamp = now()
     const cancelled = response.stopReason === 'cancelled'
-    const [nextPrompt, ...remaining] = session.queue
+    const [nextPrompt, ...remaining] = cancelled ? [] : session.queue
     this.sessions.set(sessionId, {
       ...session,
       state: cancelled ? 'cancelled' : 'idle',
@@ -737,7 +745,7 @@ export class GrokController extends EventEmitter {
   private requestPlanExit(params: unknown): Promise<{ type: PlanExitVerdict }> {
     const { sessionId, plan } = parseExitPlanRequest(params)
     const session = this.sessions.get(sessionId)
-    if (!session) {
+    if (!session || ['requested', 'confirmed', 'timed_out'].includes(session.cancellationStatus)) {
       return Promise.resolve({ type: 'abandoned' })
     }
     const current = session.plan && session.plan.status !== 'none' ? session.plan : emptyPlan()
@@ -809,7 +817,10 @@ export class GrokController extends EventEmitter {
     if (update.sessionUpdate === 'plan' || update.sessionUpdate === 'plan_update' || update.sessionUpdate === 'plan_removed') {
       next.plan = applyPlanUpdate(session.plan || emptyPlan(), update)
       next.todos = todosFromPlan(next.plan)
-      if (next.plan.status === 'review') next.state = 'attention'
+      if (next.plan.status === 'review'
+        && !['requested', 'confirmed', 'timed_out'].includes(next.cancellationStatus)) {
+        next.state = 'attention'
+      }
     }
     if (update.sessionUpdate === 'current_mode_update' && 'currentModeId' in update) {
       next.currentModeId = String(update.currentModeId || '')

@@ -67,6 +67,7 @@ export function RuntimeIntelligencePanels({ runtime }: { runtime: RuntimeSnapsho
 
       <div className="runtime-intelligence-grid">
         <RuntimePanel
+          empty={!runtime.processes.length}
           eyebrow="Process tree"
           title="Spawned descendants"
           meta={`${runtime.roots.length} root${runtime.roots.length === 1 ? '' : 's'} · depth capped at 8`}
@@ -88,6 +89,7 @@ export function RuntimeIntelligencePanels({ runtime }: { runtime: RuntimeSnapsho
         </RuntimePanel>
 
         <RuntimePanel
+          empty={!runtime.services.length}
           eyebrow="Discovery"
           title="Ports and local services"
           meta="No active network probes"
@@ -108,7 +110,7 @@ export function RuntimeIntelligencePanels({ runtime }: { runtime: RuntimeSnapsho
           )}
         </RuntimePanel>
 
-        <RuntimePanel eyebrow="Verification" title="Test command status" meta="Structured tool lifecycle">
+        <RuntimePanel empty={!runtime.tests.length} eyebrow="Verification" title="Test command status" meta="Structured tool lifecycle">
           {runtime.tests.length ? (
             <div className="runtime-signal-list">
               {runtime.tests.slice(0, MAX_VISIBLE_SIGNALS).map((test) => (
@@ -120,7 +122,7 @@ export function RuntimeIntelligencePanels({ runtime }: { runtime: RuntimeSnapsho
           )}
         </RuntimePanel>
 
-        <RuntimePanel eyebrow="Boundaries" title="External tool calls" meta="Titles and status only">
+        <RuntimePanel empty={!runtime.externalCalls.length} eyebrow="Boundaries" title="External tool calls" meta="Titles and status only">
           {runtime.externalCalls.length ? (
             <div className="runtime-signal-list">
               {runtime.externalCalls.slice(0, MAX_VISIBLE_SIGNALS).map((call) => (
@@ -151,15 +153,17 @@ function RuntimePanel({
   eyebrow,
   title,
   meta,
+  empty,
   children,
 }: {
   eyebrow: string
   title: string
   meta: string
+  empty: boolean
   children: ReactNode
 }) {
   return (
-    <article className="runtime-intelligence-panel">
+    <article className={`runtime-intelligence-panel${empty ? ' is-empty' : ''}`}>
       <header>
         <div><span>{eyebrow}</span><h3>{title}</h3></div>
         <small>{meta}</small>

@@ -1,7 +1,6 @@
 import {
   Archive,
   ArchiveRestore,
-  ArrowDown,
   Bot,
   Check,
   ChevronRight,
@@ -30,7 +29,6 @@ import {
   cancelWorkbenchSession,
   getSessionPreview,
   getSessionWorkbench,
-  getWorkspaceDiff,
   getWorkspaceSnapshot,
   promptControlSession,
   resolveControlPermission,
@@ -40,9 +38,7 @@ import {
 } from '../api'
 import { useModalFocus } from '../hooks/useModalFocus'
 import type {
-  ControlPermission,
   ControlSnapshot,
-  LiveFeedItem,
   LiveSnapshot,
   PreviewSnapshot,
   SessionRow,
@@ -50,9 +46,10 @@ import type {
   WorkspaceDiff,
   WorkspaceSnapshot,
 } from '../types'
-import { Markdown, renderInline } from '../markdown'
 import { usePrivacy } from '../privacy'
 import { SessionPlanPanel } from './SessionPlanPanel'
+import { SessionTimeline } from './SessionTimeline'
+import { useWorkspaceDiff } from '../hooks/useWorkspaceDiff'
 import { clockTime, compactNumber, elapsed, shortDate } from '../format'
 
 type WorkbenchTab = 'timeline' | 'preview' | 'changes' | 'specs'
@@ -66,21 +63,6 @@ interface SessionWorkbenchProps {
   returnFocus?: HTMLElement | null
   onClose: () => void
   onUpdated: () => Promise<void>
-}
-
-/**
- * Messages longer than this start collapsed so a pasted wall of text does not
- * bury the conversation. Grok's own replies get more room because they are
- * what the reader came for.
- */
-const COLLAPSE = {
-  user: { chars: 900, lines: 12 },
-  assistant: { chars: 3_500, lines: 45 },
-} as const
-
-function isLong(text: string, type: LiveFeedItem['type']): boolean {
-  const limit = type === 'assistant' || type === 'plan' ? COLLAPSE.assistant : COLLAPSE.user
-  return text.length > limit.chars || text.split('\n').length > limit.lines
 }
 
 function statusLabel(data: SessionWorkbenchData | null): string {
@@ -113,72 +95,140 @@ export function SessionWorkbench({
   const [prompt, setPrompt] = useState('')
   const [sending, setSending] = useState(false)
   const [renaming, setRenaming] = useState(false)
-  const [title, setTitle] = useState(fallback?.title || '')
+  const [title, setTitle] = useState('')
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null)
-  const [diff, setDiff] = useState<WorkspaceDiff | null>(null)
-  const [selectedFile, setSelectedFile] = useState('')
+  const [workspaceError, setWorkspaceError] = useState('')
+  const [workspaceRevision, setWorkspaceRevision] = useState(0)
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewViewport, setPreviewViewport] = useState<PreviewViewport>('desktop')
   const [previewRevision, setPreviewRevision] = useState(0)
   const [previewError, setPreviewError] = useState('')
-  const feedRef = useRef<HTMLDivElement>(null)
+  const currentSession = useRef(sessionId)
+  currentSession.current = sessionId
+  const sessionRequest = useRef<AbortController | null>(null)
+  const refreshQueued = useRef(false)
+  const workspaceRequest = useRef<AbortController | null>(null)
+  const workspaceStale = useRef(false)
+  const previewRequest = useRef<AbortController | null>(null)
+  const previewAction = useRef(false)
+  const cwd = data?.session.cwd || fallback?.cwd || ''
+  const {
+    selectedFile,
+    openFile,
+    diff,
+    loading: diffLoading,
+    error: diffError,
+    reset: resetDiff,
+  } = useWorkspaceDiff(cwd, workspaceRevision)
   const dialogRef = useModalFocus<HTMLDivElement>(
     onClose,
     '[aria-label="Close session console panel"]',
     returnFocus,
   )
 
-  const refresh = useCallback(async (quiet = false) => {
+  const refresh = useCallback(async function loadSession(quiet = false) {
+    if (currentSession.current !== sessionId) return
+    if (quiet && sessionRequest.current) {
+      refreshQueued.current = true
+      return
+    }
+    sessionRequest.current?.abort()
+    const request = new AbortController()
+    sessionRequest.current = request
     if (!quiet) setRefreshing(true)
     try {
-      const next = await getSessionWorkbench(sessionId)
+      const next = await getSessionWorkbench(sessionId, request.signal)
+      if (request.signal.aborted || currentSession.current !== sessionId) return
       setData(next)
-      setTitle(next.session.title)
       setError('')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to open the session.')
+      if (!request.signal.aborted && currentSession.current === sessionId) {
+        setError(requestError instanceof Error ? requestError.message : 'Unable to open the session.')
+      }
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (sessionRequest.current === request && !request.signal.aborted) {
+        sessionRequest.current = null
+        setLoading(false)
+        setRefreshing(false)
+        if (refreshQueued.current) {
+          refreshQueued.current = false
+          void loadSession(true)
+        }
+      }
     }
   }, [sessionId])
 
-  const refreshWorkspace = useCallback(async () => {
-    const cwd = data?.session.cwd || fallback?.cwd
-    if (!cwd) return
-    try {
-      const next = await getWorkspaceSnapshot(cwd)
-      setWorkspace(next)
-      if (selectedFile && !next.files.some((file) => file.path === selectedFile)) {
-        setSelectedFile('')
-        setDiff(null)
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to inspect workspace.')
+  // Live updates arrive faster than git can answer on a large repository, so a
+  // follow-up marks the in-flight read stale instead of aborting it; the read
+  // then repeats once it lands rather than restarting forever.
+  const refreshWorkspace = useCallback(async (follow = false) => {
+    if (!cwd || currentSession.current !== sessionId) return
+    if (follow && workspaceRequest.current) {
+      workspaceStale.current = true
+      return
     }
-  }, [data?.session.cwd, fallback?.cwd, selectedFile])
+    workspaceRequest.current?.abort()
+    const request = new AbortController()
+    workspaceRequest.current = request
+    setWorkspaceError('')
+    try {
+      do {
+        workspaceStale.current = false
+        const next = await getWorkspaceSnapshot(cwd, request.signal)
+        if (request.signal.aborted || currentSession.current !== sessionId) return
+        setWorkspace(next)
+        setWorkspaceRevision((value) => value + 1)
+      } while (workspaceStale.current)
+    } catch (requestError) {
+      if (!request.signal.aborted && currentSession.current === sessionId) {
+        setWorkspaceError(requestError instanceof Error ? requestError.message : 'Unable to inspect workspace.')
+      }
+    } finally {
+      if (workspaceRequest.current === request) workspaceRequest.current = null
+    }
+  }, [cwd, sessionId])
+
+  useEffect(() => {
+    if (workspace?.cwd === cwd && selectedFile && !workspace.files.some((file) => file.path === selectedFile)) {
+      resetDiff()
+    }
+  }, [cwd, workspace, selectedFile, resetDiff])
 
   const refreshPreview = useCallback(async (quiet = false) => {
+    if (currentSession.current !== sessionId || previewAction.current) return
+    if (quiet && previewRequest.current) return
+    previewRequest.current?.abort()
+    const request = new AbortController()
+    previewRequest.current = request
     if (!quiet) setPreviewLoading(true)
     try {
-      setPreview(await getSessionPreview(sessionId))
-      if (!quiet) setPreviewError('')
+      const next = await getSessionPreview(sessionId, request.signal)
+      if (request.signal.aborted || currentSession.current !== sessionId) return
+      setPreview(next)
+      setPreviewError('')
     } catch (requestError) {
-      if (!quiet) {
+      if (!request.signal.aborted && !quiet && currentSession.current === sessionId) {
         setPreviewError(requestError instanceof Error ? requestError.message : 'Unable to inspect the preview.')
       }
     } finally {
-      if (!quiet) setPreviewLoading(false)
+      if (previewRequest.current === request) {
+        previewRequest.current = null
+        if (!request.signal.aborted) setPreviewLoading(false)
+      }
     }
   }, [sessionId])
 
   useEffect(() => {
+    currentSession.current = sessionId
     setData(null)
     setWorkspace(null)
-    setDiff(null)
-    setSelectedFile('')
+    setWorkspaceError('')
+    resetDiff()
+    setRenaming(false)
+    setTitle('')
+    setPrompt('')
     setPreview(null)
     setPreviewViewport('desktop')
     setPreviewRevision(0)
@@ -187,7 +237,15 @@ export function SessionWorkbench({
     setError('')
     setMessage('')
     void refresh()
-  }, [refresh])
+    return () => {
+      currentSession.current = ''
+      sessionRequest.current?.abort()
+      sessionRequest.current = null
+      refreshQueued.current = false
+      workspaceRequest.current?.abort()
+      previewRequest.current?.abort()
+    }
+  }, [refresh, resetDiff, sessionId])
 
   const liveSignal = live?.agents.find((item) => item.id === sessionId)?.updatedAt
   const controlSession = control?.sessions.find((item) => item.id === sessionId)
@@ -205,44 +263,33 @@ export function SessionWorkbench({
 
   useEffect(() => {
     if (tab !== 'changes') return
-    const timer = window.setTimeout(() => void refreshWorkspace(), 220)
+    const timer = window.setTimeout(() => void refreshWorkspace(true), 220)
     return () => window.clearTimeout(timer)
   }, [controlSignal, liveSignal, refreshWorkspace, tab])
+
+  useEffect(() => {
+    if (tab !== 'changes') return
+    return () => {
+      workspaceRequest.current?.abort()
+      workspaceRequest.current = null
+    }
+  }, [refreshWorkspace, tab])
 
   useEffect(() => {
     if (tab !== 'preview') return
     void refreshPreview()
     const timer = window.setInterval(() => void refreshPreview(true), 1_000)
-    return () => window.clearInterval(timer)
-  }, [refreshPreview, tab])
-
-  const latestEventId = data?.transcript.at(-1)?.id
-  useEffect(() => {
-    if (!latestEventId) return
-    // Wait one frame so collapsed bodies and rendered Markdown have their final height.
-    const frame = window.requestAnimationFrame(() => {
-      // Instant, not smooth: a smooth scroll is cancelled by the re-render that
-      // shows the Latest button part-way through the animation.
-      feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'instant' })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [latestEventId, tab])
-
-  const openDiff = async (file: string) => {
-    const cwd = data?.session.cwd || fallback?.cwd
-    if (!cwd) return
-    setSelectedFile(file)
-    try {
-      setDiff(await getWorkspaceDiff(cwd, file))
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to read the diff.')
+    return () => {
+      window.clearInterval(timer)
+      previewRequest.current?.abort()
+      previewRequest.current = null
     }
-  }
+  }, [refreshPreview, tab])
 
   const send = async (event: FormEvent) => {
     event.preventDefault()
     const session = data?.session || fallback
-    if (!session || !prompt.trim()) return
+    if (!session || !prompt.trim() || sending || !control?.connected || stopping) return
     setSending(true)
     setError('')
     setMessage('')
@@ -295,6 +342,9 @@ export function SessionWorkbench({
   }
 
   const startPreview = async () => {
+    previewRequest.current?.abort()
+    previewRequest.current = null
+    previewAction.current = true
     setPreviewBusy(true)
     setPreviewError('')
     setMessage('')
@@ -304,11 +354,15 @@ export function SessionWorkbench({
     } catch (startError) {
       setPreviewError(startError instanceof Error ? startError.message : 'Unable to start preview.')
     } finally {
+      previewAction.current = false
       setPreviewBusy(false)
     }
   }
 
   const stopPreview = async () => {
+    previewRequest.current?.abort()
+    previewRequest.current = null
+    previewAction.current = true
     setPreviewBusy(true)
     setPreviewError('')
     setMessage('')
@@ -318,6 +372,7 @@ export function SessionWorkbench({
     } catch (stopError) {
       setPreviewError(stopError instanceof Error ? stopError.message : 'Unable to stop preview.')
     } finally {
+      previewAction.current = false
       setPreviewBusy(false)
     }
   }
@@ -332,6 +387,7 @@ export function SessionWorkbench({
   }
 
   const session = data?.session || fallback
+  const stopping = controlSession?.state === 'stopping' || data?.control?.state === 'stopping'
   const isWorking = data?.control?.state === 'working'
     || data?.control?.state === 'starting'
     || data?.live?.state === 'working'
@@ -391,7 +447,7 @@ export function SessionWorkbench({
                       : loading ? 'Loading session…' : privacy.sessionTitle(`Session ${sessionId.slice(0, 8)}`, sessionId)}
                   </h1>
                 </div>
-                <button onClick={() => setRenaming(true)} aria-label="Rename session"><Pencil size={15} /></button>
+                <button onClick={() => { setTitle(session?.title || ''); setRenaming(true) }} aria-label="Rename session"><Pencil size={15} /></button>
               </div>
             )}
             <div className="workbench-context">
@@ -481,7 +537,6 @@ export function SessionWorkbench({
               <SessionTimeline
                 items={transcript}
                 permissions={data?.permissions || []}
-                feedRef={feedRef}
                 onDecide={decide}
               />
             </>
@@ -501,11 +556,14 @@ export function SessionWorkbench({
             />
           ) : tab === 'changes' ? (
             <Changes
-              workspace={workspace}
+              workspace={workspace?.cwd === cwd ? workspace : null}
+              error={workspaceError}
+              diffLoading={diffLoading}
+              diffError={diffError}
               diff={diff}
               selected={selectedFile}
-              onOpen={openDiff}
-              onRefresh={refreshWorkspace}
+              onOpen={openFile}
+              onRefresh={() => refreshWorkspace()}
             />
           ) : (
             <Details session={session} data={data} />
@@ -523,16 +581,17 @@ export function SessionWorkbench({
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') event.currentTarget.form?.requestSubmit()
             }}
-            placeholder="Send a follow-up to this session…"
+            placeholder={stopping ? 'Wait for Stop to finish before sending…' : 'Send a follow-up to this session…'}
+            disabled={stopping}
             rows={2}
             maxLength={32_000}
             required
           />
-          <button disabled={sending || !control?.connected || !prompt.trim() || data?.control?.state === 'stopping'}>
+          <button disabled={sending || !control?.connected || !prompt.trim() || stopping}>
             {sending ? <LoaderCircle className="is-spinning" size={17} /> : <CornerDownLeft size={17} />}
             <span>{sending ? 'Sending' : data?.managed ? 'Send' : 'Attach'}</span>
           </button>
-          <small>{control?.connected ? '⌘ ↵ to send' : 'Control offline'}</small>
+          <small>{stopping ? 'Waiting for Stop to finish' : control?.connected ? '⌘ ↵ to send' : 'Control offline'}</small>
         </form>
       </section>
     </div>
@@ -669,134 +728,30 @@ function Preview({
   )
 }
 
-export function SessionTimeline({
-  items,
-  permissions,
-  feedRef,
-  onDecide,
-}: {
-  items: LiveFeedItem[]
-  permissions: ControlPermission[]
-  feedRef: React.RefObject<HTMLDivElement | null>
-  onDecide: (permissionId: string, optionId?: string) => Promise<void>
-}) {
-  const privacy = usePrivacy()
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [atBottom, setAtBottom] = useState(true)
-  const toggle = (id: string) => setExpanded((current) => ({ ...current, [id]: !current[id] }))
-  const onScroll = () => {
-    const element = feedRef.current
-    if (!element) return
-    setAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < 48)
-  }
-  return (
-    <div className="workbench-timeline" ref={feedRef} onScroll={onScroll}>
-      {permissions.map((permission) => (
-        <article className="workbench-permission" key={permission.id}>
-          <div><ShieldAlert size={18} /><span><small>PERMISSION REQUIRED</small><strong>{privacy.content(permission.title)}</strong></span></div>
-          <div>
-            {permission.options.map((option) => (
-              <button
-                key={option.id}
-                className={option.kind.includes('reject') ? 'is-reject' : ''}
-                onClick={() => void onDecide(permission.id, option.id)}
-              >
-                {option.name}
-              </button>
-            ))}
-            <button className="is-reject" onClick={() => void onDecide(permission.id)}>Cancel turn</button>
-          </div>
-        </article>
-      ))}
-      {items.length ? items.map((item, index) => (
-        <article className={`workbench-event event-${item.type}`} key={item.id}>
-          <div className="workbench-event-rail">
-            <span>{String(index + 1).padStart(3, '0')}</span>
-            <i />
-          </div>
-          <div className="workbench-event-content">
-            <header>
-              <span>{item.type === 'assistant' ? 'GROK' : item.type.toUpperCase()}</span>
-              <strong title={privacy.content(item.title)}>{renderInline(privacy.content(item.title))}</strong>
-              {item.status && <em>{item.status}</em>}
-              <time>{clockTime(item.timestamp)}</time>
-            </header>
-            {item.text && (
-              <EventBody
-                item={item}
-                text={privacy.content(item.text)}
-                expanded={Boolean(expanded[item.id])}
-                pinned={index === items.length - 1}
-                onToggle={() => toggle(item.id)}
-              />
-            )}
-          </div>
-        </article>
-      )) : (
-        <div className="workbench-empty">
-          <div><Radio size={23} /><span /></div>
-          <strong>No structured events recorded yet.</strong>
-          <p>Send a follow-up below. New messages, reasoning, and tool calls will stream here.</p>
-        </div>
-      )}
-      {items.length > 8 && !atBottom && (
-        <button className="jump-latest" onClick={() => feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })}>
-          <ArrowDown size={14} /> Latest
-        </button>
-      )}
-    </div>
-  )
-}
-
-function EventBody({
-  item,
-  text,
-  expanded,
-  pinned = false,
-  onToggle,
-}: {
-  item: LiveFeedItem
-  text: string
-  expanded: boolean
-  /** The newest event always shows in full; it is what the reader came to see. */
-  pinned?: boolean
-  onToggle: () => void
-}) {
-  const long = isLong(text, item.type) && !pinned
-  const collapsed = long && !expanded
-  const lineCount = text.split('\n').length
-  const body = item.type === 'assistant' || item.type === 'plan'
-    ? <Markdown className="workbench-event-body" text={text} />
-    : <p className="workbench-event-body">{text}</p>
-  return (
-    <div className={`workbench-event-text ${collapsed ? 'is-collapsed' : ''}`}>
-      {body}
-      {long && (
-        <button type="button" className="event-collapse" onClick={onToggle} aria-expanded={!collapsed}>
-          {collapsed ? <ChevronRight size={13} /> : <ArrowDown size={13} className="is-flipped" />}
-          {collapsed ? `Show all ${lineCount} lines` : 'Collapse'}
-        </button>
-      )}
-    </div>
-  )
-}
-
 function Changes({
   workspace,
+  error,
+  diffLoading,
+  diffError,
   diff,
   selected,
   onOpen,
   onRefresh,
 }: {
   workspace: WorkspaceSnapshot | null
+  error: string
+  diffLoading: boolean
+  diffError: string
   diff: WorkspaceDiff | null
   selected: string
-  onOpen: (file: string) => Promise<void>
+  onOpen: (file: string) => void
   onRefresh: () => Promise<void>
 }) {
   const privacy = usePrivacy()
   if (!workspace) {
-    return <div className="workbench-loading"><LoaderCircle size={22} className="is-spinning" /><span>Reading session workspace…</span></div>
+    return error ? (
+      <div className="workbench-empty" role="alert"><ShieldAlert size={22} /><strong>Unable to inspect workspace</strong><p>{privacy.content(error)}</p><button onClick={() => void onRefresh()}>Try again</button></div>
+    ) : <div className="workbench-loading"><LoaderCircle size={22} className="is-spinning" /><span>Reading session workspace…</span></div>
   }
   if (!workspace.repository) {
     return (
@@ -809,6 +764,7 @@ function Changes({
   }
   return (
     <div className="workbench-changes">
+      {error && <div className="workbench-banner is-error" role="alert"><ShieldAlert size={16} /><span>{privacy.content(error)}</span></div>}
       <header>
         <div>
           <GitBranch size={16} />
@@ -829,10 +785,14 @@ function Changes({
           )) : <div className="workbench-clean"><Check size={18} /><span>Working tree clean</span></div>}
         </aside>
         <section>
-          {diff ? (
+          {selected ? (
             <>
-              <header><span>{privacy.file(diff.path)}</span>{diff.truncated && <em>TRUNCATED</em>}</header>
-              <pre>{privacy.enabled ? privacy.content(diff.diff) : diff.diff || 'No textual diff available.'}</pre>
+              <header><span>{privacy.file(selected)}</span>{diff?.truncated && <em>TRUNCATED</em>}</header>
+              {diffLoading ? (
+                <div className="workbench-loading" role="status"><LoaderCircle size={22} className="is-spinning" /><span>Loading patch…</span></div>
+              ) : diffError ? (
+                <div className="workbench-empty" role="alert"><ShieldAlert size={22} /><p>{privacy.content(diffError)}</p><button onClick={() => onOpen(selected)}>Try again</button></div>
+              ) : diff && <pre>{privacy.enabled ? privacy.content(diff.diff) : diff.diff || 'No textual diff available.'}</pre>}
             </>
           ) : (
             <div className="workbench-empty"><FileCode2 size={24} /><strong>Select a changed file</strong><p>Its bounded patch will appear here.</p></div>

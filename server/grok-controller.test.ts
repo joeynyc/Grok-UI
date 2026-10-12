@@ -27,7 +27,196 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
   }
 }
 
+describe('GrokController follow-ups', () => {
+  it('runs the first prompt after attaching a recorded session', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-attach-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const attached = await controller.promptSession({
+      sessionId: 'recorded-cli-session',
+      cwd: workspace,
+      prompt: 'Verify recovered control session',
+    })
+    expect(attached.queue).toEqual([])
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle')
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      id: 'recorded-cli-session',
+      lastPrompt: 'Verify recovered control session',
+      totalTokens: 7,
+      queue: [],
+    })
+  })
+
+  it('preserves pending permission state and executes queued prompts in order', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-queue-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const created = await controller.createSession({ cwd: workspace, prompt: 'Initial fixture' })
+    await waitFor(() => controller.snapshot().permissions.length === 1)
+    const permission = controller.snapshot().permissions[0]
+    for (const prompt of ['First queued fixture', 'Second queued fixture']) {
+      const queued = await controller.promptSession({ sessionId: created.id, cwd: workspace, prompt })
+      expect(queued).toMatchObject({ state: 'attention', lastPrompt: 'Initial fixture' })
+      expect(controller.snapshot().permissions).toEqual([permission])
+    }
+    expect(controller.snapshot().sessions[0].queue.map((item) => item.text))
+      .toEqual(['First queued fixture', 'Second queued fixture'])
+
+    controller.resolvePermission(permission.id, 'allow')
+    await waitFor(() => controller.snapshot().sessions[0]?.lastPrompt === 'First queued fixture'
+      && controller.snapshot().permissions.length === 1)
+    expect(controller.snapshot().sessions[0].queue.map((item) => item.text))
+      .toEqual(['Second queued fixture'])
+    controller.resolvePermission(controller.snapshot().permissions[0].id, 'allow')
+    await waitFor(() => controller.snapshot().sessions[0]?.lastPrompt === 'Second queued fixture'
+      && controller.snapshot().permissions.length === 1)
+    expect(controller.snapshot().sessions[0].queue).toEqual([])
+    controller.resolvePermission(controller.snapshot().permissions[0].id, 'allow')
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'idle')
+  })
+})
+
 describe('GrokController cancellation', () => {
+  it.each(['plan', 'plan_update', 'exit_plan_mode'])('keeps Stop pending after a late %s notification', async (kind) => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-stop-plan-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+    const created = await controller.createSession({ cwd: workspace, prompt: 'Run the ignored cancellation verification' })
+    await waitFor(() => controller.snapshot().sessions[0]?.feed.some((item) =>
+      item.title === 'Long-running cancellation fixture') === true)
+    await controller.cancelSession(created.id)
+
+    // Deliver the valid ACP message after Stop while the fixture keeps its turn open.
+    const notifications = controller as unknown as {
+      sessionUpdate(params: unknown): void
+      requestPlanExit(params: unknown): Promise<{ type: string }>
+    }
+    let verdict: Promise<{ type: string }> | undefined
+    if (kind === 'exit_plan_mode') {
+      verdict = notifications.requestPlanExit({ sessionId: created.id, planContent: 'A late plan' })
+    } else {
+      notifications.sessionUpdate({ sessionId: created.id, update: {
+        sessionUpdate: kind,
+        entries: [{ content: 'A late plan', status: 'pending', priority: 'medium' }],
+      } })
+    }
+    await expect(controller.promptSession({
+      sessionId: created.id, cwd: workspace, prompt: 'Must not queue during Stop',
+    })).rejects.toThrow('Wait for Stop to finish')
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      state: 'stopping', cancellationStatus: 'requested', queue: [], awaitingPlanApproval: false,
+    })
+    if (verdict) await expect(verdict).resolves.toEqual({ type: 'abandoned' })
+  })
+
+  it('clears all queued work on Stop and resumes only the new prompt', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-cancel-queue-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const prompt = 'Run the long-running cancellation verification'
+    const created = await controller.createSession({ cwd: workspace, prompt })
+    await waitFor(() => controller.snapshot().sessions[0]?.feed.some((item) =>
+      item.title === 'Long-running cancellation fixture') === true)
+    for (const followUp of ['First discarded fixture', 'Second discarded fixture']) {
+      await controller.promptSession({ sessionId: created.id, cwd: workspace, prompt: followUp })
+    }
+    expect(controller.snapshot().sessions[0]).toMatchObject({ state: 'working', lastPrompt: prompt })
+    expect(controller.snapshot().sessions[0].queue).toHaveLength(2)
+
+    await controller.cancelSession(created.id)
+    expect(controller.snapshot().sessions[0].queue).toEqual([])
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'cancelled')
+    expect(controller.snapshot().sessions[0]).toMatchObject({ cancellationStatus: 'confirmed', queue: [] })
+    await controller.promptSession({
+      sessionId: created.id,
+      cwd: workspace,
+      prompt: 'Verify recovered control session',
+    })
+    await waitFor(() => ['idle', 'attention'].includes(controller.snapshot().sessions[0]?.state))
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      state: 'idle',
+      lastPrompt: 'Verify recovered control session',
+      totalTokens: 7,
+      queue: [],
+    })
+    expect(controller.snapshot().permissions).toEqual([])
+  })
+
+  it('clears the entire queue when the active prompt completes as cancelled', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-cancel-result-'))
+    cleanup.push(workspace)
+    const controller = new GrokController()
+    controllers.push(controller)
+
+    const created = await controller.createSession({ cwd: workspace, prompt: 'Permission fixture' })
+    await waitFor(() => controller.snapshot().permissions.length === 1)
+    const permission = controller.snapshot().permissions[0]
+    for (const prompt of ['First discarded fixture', 'Second discarded fixture']) {
+      await controller.promptSession({ sessionId: created.id, cwd: workspace, prompt })
+    }
+    controller.resolvePermission(permission.id)
+    await waitFor(() => controller.snapshot().sessions[0]?.state === 'cancelled')
+    expect(controller.snapshot().sessions[0].queue).toEqual([])
+  })
+
+  it('rejects follow-ups during Stop and keeps discarded work out of a later resume after timeout', async () => {
+    process.env.GROK_BIN = fakeGrok
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-stopping-queue-'))
+    cleanup.push(workspace)
+    const controller = new GrokController(undefined, 200)
+    controllers.push(controller)
+
+    const prompt = 'Run the ignored cancellation verification'
+    const created = await controller.createSession({ cwd: workspace, prompt })
+    await waitFor(() => controller.snapshot().sessions[0]?.feed.some((item) =>
+      item.title === 'Long-running cancellation fixture') === true)
+    for (const followUp of ['First discarded fixture', 'Second discarded fixture']) {
+      await controller.promptSession({ sessionId: created.id, cwd: workspace, prompt: followUp })
+    }
+    await controller.cancelSession(created.id)
+    const stopping = controller.snapshot().sessions[0]
+    expect(stopping.queue).toEqual([])
+    await expect(controller.promptSession({
+      sessionId: created.id,
+      cwd: workspace,
+      prompt: 'Follow-up while stopping',
+    })).rejects.toThrow('Wait for Stop to finish before sending another prompt.')
+    expect(controller.snapshot().sessions[0]).toEqual(stopping)
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      state: 'stopping',
+      lastPrompt: prompt,
+      cancellationStatus: 'requested',
+      stopReason: 'stop_requested',
+    })
+    await waitFor(() => controller.snapshot().sessions[0]?.cancellationStatus === 'timed_out')
+    expect(controller.snapshot().sessions[0]).toMatchObject({ state: 'failed', queue: [] })
+    await controller.promptSession({
+      sessionId: created.id,
+      cwd: workspace,
+      prompt: 'Verify recovered control session',
+    })
+    await waitFor(() => ['idle', 'attention'].includes(controller.snapshot().sessions[0]?.state))
+    expect(controller.snapshot().sessions[0]).toMatchObject({
+      state: 'idle',
+      lastPrompt: 'Verify recovered control session',
+      totalTokens: 7,
+      queue: [],
+    })
+    expect(controller.snapshot().permissions).toEqual([])
+  })
+
   it('surfaces a retryable failure when Grok does not confirm Stop', async () => {
     process.env.GROK_BIN = fakeGrok
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-cancel-'))

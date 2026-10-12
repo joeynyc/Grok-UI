@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -11,6 +11,7 @@ import type { UsageLedgerEntry } from './types.js'
 const cleanup: string[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(cleanup.splice(0).map((directory) =>
     fs.rm(directory, { recursive: true, force: true })))
 })
@@ -43,6 +44,61 @@ async function setup() {
 }
 
 describe('UsageBudgetManager', () => {
+  it('preserves concurrent budget creations in memory and on disk', async () => {
+    const { manager, state } = await setup()
+    const budgets = await Promise.all([
+      manager.upsert({ dimension: 'global', metric: 'tokens', limit: 900, period: 'all' }),
+      manager.upsert({ dimension: 'model', key: 'grok-code', metric: 'tokens', limit: 800, period: 'all' }),
+    ])
+    const ids = budgets.map((budget) => budget.id).sort()
+    expect(state.usageBudgets().map((budget) => budget.id).sort()).toEqual(ids)
+    const persisted = JSON.parse(await fs.readFile(state.file, 'utf8'))
+    expect(persisted.usageBudgets.map((budget: { id: string }) => budget.id).sort()).toEqual(ids)
+  })
+
+  it('does not resurrect a removed budget when another budget is saved concurrently', async () => {
+    const { manager, state } = await setup()
+    const removed = await manager.upsert({ dimension: 'global', metric: 'tokens', limit: 900, period: 'all' })
+    await manager.snapshot()
+    const [didRemove, added] = await Promise.all([
+      manager.remove(removed.id),
+      manager.upsert({ dimension: 'model', key: 'grok-code', metric: 'tokens', limit: 800, period: 'all' }),
+    ])
+    expect(didRemove).toBe(true)
+    expect(state.usageBudgets().map((budget) => budget.id)).toEqual([added.id])
+    expect(state.usageAlerts().some((alert) => alert.budgetId === removed.id)).toBe(false)
+  })
+
+  it('preserves an acknowledgement while a concurrent snapshot creates more alerts', async () => {
+    const { manager, state } = await setup()
+    const now = new Date('2026-07-26T12:00:00.000Z')
+    await manager.upsert({ dimension: 'global', metric: 'tokens', limit: 900, period: 'all' }, now)
+    const first = await manager.snapshot(now)
+    const alert = first.alerts[0]
+    await manager.upsert({ dimension: 'model', key: 'grok-code', metric: 'tokens', limit: 800, period: 'all' }, now)
+    const [acknowledged, snapshot] = await Promise.all([
+      manager.acknowledge(alert.id, now),
+      manager.snapshot(now),
+    ])
+    expect(acknowledged).toBe(true)
+    expect(snapshot.alerts).toHaveLength(4)
+    expect(snapshot.alerts.find((item) => item.id === alert.id)?.acknowledgedAt).toBe(now.toISOString())
+    expect(state.usageAlerts().find((item) => item.id === alert.id)?.acknowledgedAt).toBe(now.toISOString())
+  })
+
+  it('continues queued budget operations after a failed write', async () => {
+    const { manager, state } = await setup()
+    vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('Disk unavailable'))
+    const results = await Promise.allSettled([
+      manager.upsert({ dimension: 'global', label: 'Failed budget', metric: 'tokens', limit: 900, period: 'all' }),
+      manager.upsert({ dimension: 'global', label: 'Saved budget', metric: 'tokens', limit: 800, period: 'all' }),
+    ])
+    expect(results[0]).toMatchObject({ status: 'rejected', reason: new Error('Disk unavailable') })
+    expect(results[1].status).toBe('fulfilled')
+    expect(state.usageBudgets().map((budget) => budget.label)).toEqual(['Saved budget'])
+    await expect(state.flush()).resolves.toBeUndefined()
+  })
+
   it('persists optional budgets and deduplicates local warning and exceeded alerts', async () => {
     const { directory, manager } = await setup()
     const now = new Date('2026-07-26T12:00:00.000Z')

@@ -151,6 +151,14 @@
   border-right: 0;
 }
 
+.runtime-intelligence-panel.is-empty {
+  min-height: 0;
+}
+
+.runtime-intelligence-panel.is-empty > header {
+  border-bottom: 0;
+}
+
 .runtime-intelligence-panel > header {
   min-height: 70px;
   padding: 13px 17px;
@@ -375,14 +383,11 @@
 }
 
 .runtime-intelligence-empty {
-  min-height: 208px;
-  padding: 30px;
-  display: grid;
-  place-items: center;
+  padding: 0 17px 18px;
   color: var(--muted);
   font-size: var(--type-body);
   line-height: 1.7;
-  text-align: center;
+  text-align: left;
 }
 
 .runtime-intelligence-foot {

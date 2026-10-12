@@ -29,8 +29,8 @@ html[data-theme='event-horizon'] {
   --coral-soft: rgba(121, 203, 255, .13);
   --amber: #ffb156;
   background:
-    linear-gradient(180deg, rgba(1, 3, 8, .18), rgba(2, 5, 11, .74) 55%, #03050a 100%),
-    linear-gradient(90deg, rgba(255, 51, 42, .05), transparent 32%, rgba(57, 160, 255, .045)),
+    linear-gradient(180deg, rgba(1, 3, 8, .64), rgba(2, 5, 11, .88) 55%, #03050a 100%),
+    linear-gradient(90deg, rgba(255, 51, 42, .025), transparent 32%, rgba(57, 160, 255, .025)),
     url('/themes/event-horizon.png') center top / cover fixed no-repeat,
     #03050a;
 }
