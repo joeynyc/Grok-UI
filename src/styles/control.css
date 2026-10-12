@@ -267,11 +267,55 @@
   gap: 12px;
 }
 
+.launch-options-row {
+  grid-template-columns: minmax(150px, 1.2fr) minmax(100px, 1fr) minmax(100px, 1fr);
+  align-items: end;
+}
+
+.control-field.launch-toggle {
+  min-height: 43px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.control-field.launch-toggle > span {
+  letter-spacing: .06em;
+}
+
+.control-field.launch-toggle > input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--lime);
+  cursor: pointer;
+}
+
+.launch-advanced {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.launch-advanced > summary {
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: var(--type-body);
+  cursor: pointer;
+}
+
+.launch-advanced .control-field {
+  margin-top: 0;
+}
+
 .prompt-field textarea {
-  min-height: 145px;
+  min-height: 112px;
   padding: 14px;
   resize: vertical;
-  font-size: 11px;
+  font-size: var(--type-control);
   line-height: 1.65;
 }
 

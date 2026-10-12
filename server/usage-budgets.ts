@@ -66,12 +66,44 @@ function alertId(budgetId: string, threshold: number, budgetUpdatedAt: string): 
 }
 
 export class UsageBudgetManager {
+  private operationQueue: Promise<void> = Promise.resolve()
+
   constructor(
     private readonly state: SessionStateStore,
     private readonly ledger: UsageLedger,
   ) {}
 
-  async upsert(input: UsageBudgetInput, now = new Date()): Promise<UsageBudget> {
+  upsert(input: UsageBudgetInput, now = new Date()): Promise<UsageBudget> {
+    const request = { ...input }
+    const requestedAt = new Date(now)
+    return this.serialize(() => this.upsertStored(request, requestedAt))
+  }
+
+  remove(id: string): Promise<boolean> {
+    return this.serialize(() => this.removeStored(id))
+  }
+
+  acknowledge(alertIdToAcknowledge: string, now = new Date()): Promise<boolean> {
+    const requestedAt = new Date(now)
+    return this.serialize(() => this.acknowledgeStored(alertIdToAcknowledge, requestedAt))
+  }
+
+  snapshot(now = new Date()): Promise<UsageBudgetSnapshot> {
+    const requestedAt = new Date(now)
+    return this.serialize(() => this.readSnapshot(requestedAt))
+  }
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    // Include the read in the transaction: the store exposes only durable state.
+    const result = this.operationQueue.then(async () => {
+      await this.state.load()
+      return operation()
+    })
+    this.operationQueue = result.then(() => {}, () => {})
+    return result
+  }
+
+  private async upsertStored(input: UsageBudgetInput, now: Date): Promise<UsageBudget> {
     const dimension = input.dimension
     if (!['global', 'project', 'model', 'session', 'agent'].includes(dimension)) {
       throw new Error('Budget dimension must be global, project, model, session, or agent.')
@@ -119,7 +151,7 @@ export class UsageBudgetManager {
     return budget
   }
 
-  async remove(id: string): Promise<boolean> {
+  private async removeStored(id: string): Promise<boolean> {
     const budgets = this.state.usageBudgets()
     if (!budgets.some((budget) => budget.id === id)) return false
     await this.state.saveUsageBudgets(budgets.filter((budget) => budget.id !== id))
@@ -127,7 +159,7 @@ export class UsageBudgetManager {
     return true
   }
 
-  async acknowledge(alertIdToAcknowledge: string, now = new Date()): Promise<boolean> {
+  private async acknowledgeStored(alertIdToAcknowledge: string, now: Date): Promise<boolean> {
     const alerts = this.state.usageAlerts()
     if (!alerts.some((alert) => alert.id === alertIdToAcknowledge)) return false
     await this.state.saveUsageAlerts(alerts.map((alert) =>
@@ -137,7 +169,7 @@ export class UsageBudgetManager {
     return true
   }
 
-  async snapshot(now = new Date()): Promise<UsageBudgetSnapshot> {
+  private async readSnapshot(now: Date): Promise<UsageBudgetSnapshot> {
     const budgets = this.state.usageBudgets()
     const statuses = budgets.map((budget) => {
       const report = reportFor(this.ledger, budget, now)

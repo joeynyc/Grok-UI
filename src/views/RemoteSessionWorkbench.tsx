@@ -23,7 +23,7 @@ import {
 import { useModalFocus } from '../hooks/useModalFocus'
 import { usePrivacy } from '../privacy'
 import type { FleetTransportKind, RemoteSessionSnapshot, SessionRow } from '../types'
-import { SessionTimeline } from './SessionWorkbench'
+import { SessionTimeline } from './SessionTimeline'
 
 interface PendingPrompt {
   commandId: string
@@ -84,7 +84,10 @@ export function RemoteSessionWorkbench({
   const [interrupting, setInterrupting] = useState(false)
   const permissionCommands = useRef(new Map<string, PendingCommand>())
   const interruptCommand = useRef<PendingCommand | null>(null)
-  const feedRef = useRef<HTMLDivElement>(null)
+  const sessionKey = `${hostId}:${sessionId}`
+  const currentSession = useRef(sessionKey)
+  currentSession.current = sessionKey
+  const sessionRequest = useRef<AbortController | null>(null)
   const dialogRef = useModalFocus<HTMLDivElement>(
     onClose,
     '[aria-label="Close remote session panel"]',
@@ -92,38 +95,78 @@ export function RemoteSessionWorkbench({
   )
 
   const refresh = useCallback(async (quiet = false) => {
+    if (currentSession.current !== sessionKey) return
+    sessionRequest.current?.abort()
+    const request = new AbortController()
+    sessionRequest.current = request
     if (!quiet) setRefreshing(true)
     try {
-      setData(await getRemoteSession(hostId, sessionId))
+      const next = await getRemoteSession(hostId, sessionId, request.signal)
+      if (request.signal.aborted || currentSession.current !== sessionKey) return
+      setData(next)
       setControlAvailable(true)
       setError('')
     } catch (requestError) {
-      setControlAvailable(false)
-      setError(requestError instanceof Error ? requestError.message : 'Unable to open the remote session.')
+      if (!request.signal.aborted && currentSession.current === sessionKey) {
+        setControlAvailable(false)
+        setError(requestError instanceof Error ? requestError.message : 'Unable to open the remote session.')
+      }
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (sessionRequest.current === request && !request.signal.aborted) {
+        sessionRequest.current = null
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
-  }, [hostId, sessionId])
+  }, [hostId, sessionId, sessionKey])
 
   useEffect(() => {
+    let active = true
+    currentSession.current = sessionKey
+    setData(null)
+    setLoading(true)
+    setControlAvailable(false)
+    setStreamConnected(false)
+    setPrompt('')
+    setPendingPrompt(null)
+    setError('')
+    setMessage('')
+    permissionCommands.current.clear()
+    interruptCommand.current = null
     void refresh()
     const events = new EventSource(remoteSessionEventsUrl(hostId, sessionId))
+    const supersedeRead = () => {
+      sessionRequest.current?.abort()
+      sessionRequest.current = null
+      setRefreshing(false)
+    }
     events.addEventListener('session', (event) => {
+      if (!active) return
       try {
-        setData(parseRemoteSessionSnapshot(JSON.parse((event as MessageEvent).data)))
+        const next = parseRemoteSessionSnapshot(JSON.parse((event as MessageEvent).data))
+        // A stream observation received after a GET began supersedes that read.
+        supersedeRead()
+        setData(next)
         setStreamConnected(true)
         setControlAvailable(true)
         setError('')
         setLoading(false)
       } catch {
+        supersedeRead()
+        setControlAvailable(false)
+        setLoading(false)
         setError('The remote session stream returned an invalid snapshot.')
       }
     })
-    events.addEventListener('heartbeat', () => setStreamConnected(true))
+    events.addEventListener('heartbeat', () => {
+      if (active) setStreamConnected(true)
+    })
     events.addEventListener('session-error', (event) => {
+      if (!active) return
+      supersedeRead()
       setStreamConnected(false)
       setControlAvailable(false)
+      setLoading(false)
       try {
         const payload = JSON.parse((event as MessageEvent).data) as { error?: string }
         setError(payload.error || 'The remote session connection needs attention.')
@@ -131,19 +174,22 @@ export function RemoteSessionWorkbench({
         setError('The remote session connection needs attention.')
       }
     })
-    events.onerror = () => setStreamConnected(false)
-    return () => events.close()
-  }, [hostId, refresh, sessionId])
-
-  useEffect(() => {
-    if (!feedRef.current) return
-    feedRef.current.scrollTop = feedRef.current.scrollHeight
-  }, [data?.transcript.at(-1)?.id])
+    events.onerror = () => {
+      if (active) setStreamConnected(false)
+    }
+    return () => {
+      active = false
+      currentSession.current = ''
+      sessionRequest.current?.abort()
+      sessionRequest.current = null
+      events.close()
+    }
+  }, [hostId, refresh, sessionId, sessionKey])
 
   const send = async (event: FormEvent) => {
     event.preventDefault()
     const text = pendingPrompt?.prompt || prompt.trim()
-    if (!text || !controlAvailable) return
+    if (!text || !controlAvailable || sending || stopping) return
     const pending = pendingPrompt || { ...newCommand(), prompt: text }
     setPendingPrompt(pending)
     setSending(true)
@@ -225,6 +271,7 @@ export function RemoteSessionWorkbench({
   }
 
   const session = data?.session || fallback
+  const stopping = data?.control?.state === 'stopping'
   const working = ['working', 'starting', 'attention'].includes(data?.control?.state || '')
     || data?.live?.state === 'working'
   const canInterrupt = controlAvailable && Boolean(
@@ -325,7 +372,6 @@ export function RemoteSessionWorkbench({
             <SessionTimeline
               items={data?.transcript || []}
               permissions={data?.permissions || []}
-              feedRef={feedRef}
               onDecide={decide}
             />
           )}
@@ -347,13 +393,14 @@ export function RemoteSessionWorkbench({
                 event.currentTarget.form?.requestSubmit()
               }
             }}
-            placeholder="Send a follow-up to this session…"
+            placeholder={stopping ? 'Wait for Interrupt to finish before sending…' : 'Send a follow-up to this session…'}
+            disabled={stopping}
             rows={2}
             maxLength={32_000}
             required
           />
           <button
-            disabled={sending || !controlAvailable || !prompt.trim() || data?.control?.state === 'stopping'}
+            disabled={sending || !controlAvailable || !prompt.trim() || stopping}
             aria-label={sending
               ? 'Sending remote follow-up'
               : pendingPrompt
@@ -365,7 +412,7 @@ export function RemoteSessionWorkbench({
               : <CornerDownLeft size={17} />}
             <span>{sending ? 'SENDING' : pendingPrompt ? 'RETRY' : 'SEND'}</span>
           </button>
-          <small>{controlAvailable ? '⌘ ↵ to send' : 'Waiting for a fresh, healthy host'}</small>
+          <small>{stopping ? 'Waiting for Interrupt to finish' : controlAvailable ? '⌘ ↵ to send' : 'Waiting for a fresh, healthy host'}</small>
         </form>
       </section>
     </div>

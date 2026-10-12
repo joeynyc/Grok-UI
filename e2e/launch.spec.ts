@@ -218,6 +218,7 @@ test.describe.serial('public launch path', () => {
   })
 
   test('guides a clean installation through missing CLI and ready states', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
     await Promise.all([
       fs.rm(path.join(grokHome, 'e2e-cli-ready'), { force: true }),
       fs.rm(path.join(grokHome, 'active_sessions.json'), { force: true }),
@@ -243,19 +244,25 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByRole('heading', { name: /Zero to live/ })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Setup needed')).toBeVisible()
     await expect(page.getByText('Grok CLI is missing or cannot run.')).toBeVisible()
+    await expect(page.locator('.page-intro')).toHaveClass(/is-compact/)
+    await expect(page.getByRole('button', { name: 'Copy grok version', exact: true })).toBeInViewport()
+    await expect(page.locator('.live-summary-strip')).toHaveCount(0)
 
     await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'unauthenticated\n')
     await page.getByRole('button', { name: /Recheck setup/ }).click()
 
     await expect(page.getByText('Setup needed')).toBeVisible()
-    await expect(page.getByText('Grok Build e2e')).toBeVisible()
     await expect(page.getByText('Authentication is required.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Copy grok login', exact: true })).toBeInViewport()
+    await page.getByText('Setup checklist and CLI commands', { exact: true }).click()
+    await expect(page.getByText('Grok Build e2e')).toBeVisible()
+    await page.getByText('Setup checklist and CLI commands', { exact: true }).click()
 
     await fs.writeFile(path.join(grokHome, 'e2e-cli-ready'), 'ready\n')
     await page.getByRole('button', { name: /Recheck setup/ }).click()
 
     await expect(page.getByText('Ready to start')).toBeVisible()
-    await expect(page.getByText('Environment ready.')).toBeVisible()
+    await expect(page.getByText('Environment ready.', { exact: false })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Start a session' })).toBeVisible()
     await expect(page.getByLabel('WORKSPACE')).toBeVisible()
     await expect(page.getByLabel('INSTRUCTION')).toBeVisible()
@@ -264,6 +271,9 @@ test.describe.serial('public launch path', () => {
     await expect(page.getByLabel('WORKTREE')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible()
     await expect(page).toHaveURL(/#\/live$/)
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await expect(page.getByLabel('WORKSPACE')).toBeInViewport()
+    await page.setViewportSize({ width: 1280, height: 900 })
 
     // Letters typed into a focused <select> pick options; they must not fire
     // the single-key room shortcuts (t = Themes, m = Memory, 3 = Changes).
@@ -624,12 +634,15 @@ test.describe.serial('public launch path', () => {
     })
 
     await page.getByRole('button', { name: /Usage/ }).click()
-    await expect(page.getByRole('heading', { name: /Know what was used/ })).toBeVisible()
-    await expect(page.getByText('Persistent usage ledger', { exact: true })).toBeVisible()
-    await expect(page.getByText('Telemetry coverage')).toBeVisible()
+    await expect(page.getByRole('heading', { name: /What this host used/ })).toBeVisible()
+    await expect(page.getByText('Telemetry coverage')).toHaveCount(0)
+    await expect(page.getByText('Persistent usage ledger')).toHaveCount(0)
+    const displayedReport = await (await page.request.get('/api/usage?period=30d&scope=sessions&groupBy=project')).json()
+    await expect(page.locator('.usage-total > strong')).toHaveText(displayedReport.totals.totalTokens.value.toLocaleString())
     await expect(page.locator('.usage-ledger')).toContainText('secret-client')
-    await expect(page.locator('.usage-ledger')).toContainText(/derived|incomplete/)
+    await expect(page.locator('.usage-ledger')).toContainText(/Reported|Derived|Incomplete/)
 
+    await page.getByRole('button', { name: 'Set a limit' }).click()
     const budgets = page.locator('.usage-budget-panel')
     await budgets.getByLabel('Limit').fill('1')
     await budgets.getByRole('button', { name: 'Add budget' }).click()

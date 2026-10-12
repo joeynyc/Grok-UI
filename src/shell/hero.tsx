@@ -11,10 +11,10 @@ export const HERO_STORAGE_KEY = 'grok-ui-hero'
 
 export function storedHeroDensity(): HeroDensity {
   try {
-    return localStorage.getItem(HERO_STORAGE_KEY) === 'compact' ? 'compact' : 'full'
-  } catch {
-    return 'full'
-  }
+    const stored = localStorage.getItem(HERO_STORAGE_KEY)
+    if (stored === 'compact' || stored === 'full') return stored
+  } catch { /* Use the viewport default when storage is unavailable. */ }
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 680px)').matches ? 'compact' : 'full'
 }
 
 interface HeroDensityValue {

@@ -214,43 +214,6 @@ export function SessionLaunchForm({
               {!privacy.enabled && workspaces.map((workspace) => <option value={workspace} key={workspace} />)}
             </datalist>
           </label>
-          <div className="control-field-row">
-            <label className="control-field">
-              <span>MODEL <em>optional</em></span>
-              {models.length ? (
-                <select value={model} onChange={(event) => setModel(event.target.value)}>
-                  <option value="">Use Grok default</option>
-                  {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                </select>
-              ) : (
-                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Use Grok default" />
-              )}
-            </label>
-            <label className="control-field">
-              <span>REASONING</span>
-              <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
-                {['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => <option key={effort}>{effort}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="control-field-row">
-            <label className="control-field">
-              <span>PERMISSIONS</span>
-              <select value={permissionMode} onChange={(event) => setPermissionMode(event.target.value as PermissionMode)}>
-                <option value="ask">Ask</option>
-                <option value="auto">Auto</option>
-                <option value="always-approve">Always-approve</option>
-              </select>
-            </label>
-            <label className="control-field launch-toggle">
-              <span>PLAN FIRST</span>
-              <input type="checkbox" checked={planMode} onChange={(event) => setPlanMode(event.target.checked)} />
-            </label>
-            <label className="control-field launch-toggle">
-              <span>WORKTREE</span>
-              <input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} />
-            </label>
-          </div>
         </>
       )}
 
@@ -263,12 +226,57 @@ export function SessionLaunchForm({
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') event.currentTarget.form?.requestSubmit()
           }}
           placeholder="What should Grok do next?"
-          rows={7}
+          rows={4}
           maxLength={32_000}
           required
         />
         <small>{compactNumber(prompt.length)} / 32K</small>
       </label>
+
+      {mode === 'new' && (
+        <>
+          <div className="control-field-row launch-options-row">
+            <label className="control-field launch-permissions">
+              <span>PERMISSIONS</span>
+              <select value={permissionMode} onChange={(event) => setPermissionMode(event.target.value as PermissionMode)}>
+                <option value="ask">Ask</option>
+                <option value="auto">Auto</option>
+                <option value="always-approve">Always-approve</option>
+              </select>
+            </label>
+            <label className="control-field launch-toggle">
+              <input type="checkbox" checked={planMode} onChange={(event) => setPlanMode(event.target.checked)} />
+              <span>PLAN FIRST</span>
+            </label>
+            <label className="control-field launch-toggle">
+              <input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} />
+              <span>WORKTREE</span>
+            </label>
+          </div>
+          <details className="launch-advanced">
+            <summary>Model and reasoning</summary>
+            <div className="control-field-row">
+              <label className="control-field">
+                <span>MODEL <em>optional</em></span>
+                {models.length ? (
+                  <select value={model} onChange={(event) => setModel(event.target.value)}>
+                    <option value="">Use Grok default</option>
+                    {models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                ) : (
+                  <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Use Grok default" />
+                )}
+              </label>
+              <label className="control-field">
+                <span>REASONING</span>
+                <select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value)}>
+                  {['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => <option key={effort}>{effort}</option>)}
+                </select>
+              </label>
+            </div>
+          </details>
+        </>
+      )}
 
       <button
         className="launch-button"

@@ -61,10 +61,12 @@ function App() {
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null)
   const [control, setControl] = useState<ControlSnapshot | null>(null)
   const [setup, setSetup] = useState<SetupStatus | null>(null)
+  const [setupError, setSetupError] = useState('')
   const [streamConnected, setStreamConnected] = useState(false)
   const [workspaceChange, setWorkspaceChange] = useState<WorkspaceChangeEvent | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshVersion, setRefreshVersion] = useState(0)
   const [error, setError] = useState('')
   const [fleetError, setFleetError] = useState('')
   const [query, setQuery] = useState('')
@@ -88,6 +90,11 @@ function App() {
   const mobileNavTriggerRef = useRef<HTMLElement | null>(null)
   const mobileNavOpenRef = useRef(false)
   const attention = useMemo(() => collectAttention(live, control), [control, live])
+  const usageActivityVersion = useMemo(() => JSON.stringify([
+    data?.generatedAt,
+    live?.agents.map((agent) => [agent.id, agent.updatedAt, agent.costAmount, agent.costCurrency]),
+    control?.sessions.map((session) => [session.id, session.updatedAt, session.totalTokens, session.costAmount]),
+  ]), [data?.generatedAt, live?.agents, control?.sessions])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -119,7 +126,10 @@ function App() {
   }, [heroDensity])
 
   const load = useCallback(async (force = false) => {
-    if (force) setRefreshing(true)
+    if (force) {
+      setRefreshing(true)
+      setRefreshVersion((current) => current + 1)
+    }
     try {
       const [payload, livePayload, runtimePayload] = await Promise.all([
         getDashboard(force),
@@ -132,10 +142,17 @@ function App() {
       setError('')
       if (payload.stats.sessions === 0) {
         void getSetupStatus(force)
-          .then(setSetup)
-          .catch(() => setSetup(null))
+          .then((next) => {
+            setSetup(next)
+            setSetupError('')
+          })
+          .catch((setupFailure) => {
+            setSetup(null)
+            setSetupError(setupFailure instanceof Error ? setupFailure.message : 'Setup diagnostics request failed')
+          })
       } else {
         setSetup(null)
+        setSetupError('')
       }
       void getControlSnapshot()
         .then((next) => setControl((current) => reconcileControlSnapshot(current, next)))
@@ -424,6 +441,7 @@ function App() {
                 data={data}
                 control={control}
                 setup={setup}
+                setupError={setupError}
                 connected={streamConnected}
                 onOpenSession={openSession}
                 onRefresh={() => void load(true)}
@@ -475,7 +493,12 @@ function App() {
               />
             )}
             {view === 'activity' && <ActivityView data={data} />}
-            {view === 'usage' && <UsageView />}
+            {view === 'usage' && (
+              <UsageView
+                refreshVersion={refreshVersion}
+                activityVersion={usageActivityVersion}
+              />
+            )}
             {view === 'fleet' && (
               <FleetView
                 fleet={fleet}

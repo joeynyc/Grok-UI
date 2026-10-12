@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs'
+import { constants as fsConstants, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type {
@@ -49,6 +49,10 @@ const MAX_USAGE_ALERTS = 500
 
 function safeId(id: string): boolean {
   return Boolean(id) && /^[a-zA-Z0-9-]+$/.test(id)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function boundedString(value: unknown, limit = 512): string {
@@ -165,9 +169,18 @@ function normalizeUsageAlert(value: unknown): UsageBudgetAlert | null {
 }
 
 function normalizeControlSession(value: unknown): ControlSession | null {
-  if (!value || typeof value !== 'object') return null
+  if (!isRecord(value)) return null
   const item = value as Partial<ControlSession>
-  if (!item.id || !safeId(item.id) || typeof item.cwd !== 'string') return null
+  if (typeof item.id !== 'string' || !safeId(item.id) || typeof item.cwd !== 'string') return null
+  if (item.state !== undefined
+    && !['working', 'starting', 'attention', 'stopping', 'idle', 'cancelled', 'failed'].includes(item.state)) return null
+  for (const field of ['feed', 'workflows', 'availableModes', 'availableCommands', 'todos', 'queue']) {
+    if (value[field] !== undefined && !Array.isArray(value[field])) return null
+  }
+  if (item.workflows?.some((workflow) => !isRecord(workflow)
+    || !Array.isArray(workflow.phases) || !Array.isArray(workflow.agents)
+    || workflow.phases.some((phase) => !isRecord(phase))
+    || workflow.agents.some((agent) => !isRecord(agent)))) return null
   const restoredState = ['working', 'starting', 'attention', 'stopping'].includes(item.state || '')
     ? 'idle'
     : item.state || 'idle'
@@ -221,12 +234,69 @@ function normalizeControlSession(value: unknown): ControlSession | null {
   }
 }
 
+// A malformed collection means the file is not ours to rewrite, but a single
+// unreadable record should not keep the whole dashboard from starting. Such
+// records are counted so the loader can back up the original before dropping them.
+interface SkippedRecords { count: number }
+
+function normalizeStateCollection<T>(
+  value: unknown,
+  normalize: (item: unknown) => T | null,
+  skipped: SkippedRecords,
+): T[] {
+  if (!Array.isArray(value)) throw new Error('Invalid state collection.')
+  return value.flatMap((item) => {
+    const normalized = normalize(item)
+    if (normalized === null) {
+      skipped.count += 1
+      return []
+    }
+    return [normalized]
+  })
+}
+
+function normalizeState(raw: Record<string, unknown>, skipped: SkippedRecords): PersistedState {
+  if (!isRecord(raw.sessions)) throw new Error('Invalid session annotations.')
+  const annotations: Record<string, SessionAnnotation> = {}
+  Object.entries(raw.sessions).forEach(([id, annotation]) => {
+    if (!safeId(id) || !isRecord(annotation)
+      || (annotation.title !== undefined && typeof annotation.title !== 'string')
+      || typeof annotation.archived !== 'boolean'
+      || typeof annotation.updatedAt !== 'string') {
+      skipped.count += 1
+      return
+    }
+    annotations[id] = {
+      title: annotation.title,
+      archived: annotation.archived,
+      updatedAt: annotation.updatedAt,
+    }
+  })
+  // Only collections introduced after the file's version may be absent.
+  const usageEntries = raw.usageEntries === undefined && raw.version === 1 ? [] : raw.usageEntries
+  const usageBudgets = raw.usageBudgets === undefined && raw.version !== 3 ? [] : raw.usageBudgets
+  const usageAlerts = raw.usageAlerts === undefined && raw.version !== 3 ? [] : raw.usageAlerts
+  return {
+    version: 3,
+    sessions: annotations,
+    managedSessions: normalizeStateCollection(raw.managedSessions, normalizeControlSession, skipped),
+    usageEntries: normalizeStateCollection(usageEntries, normalizeUsageEntry, skipped).slice(0, MAX_USAGE_ENTRIES),
+    usageBudgets: normalizeStateCollection(usageBudgets, normalizeUsageBudget, skipped).slice(0, MAX_USAGE_BUDGETS),
+    usageAlerts: normalizeStateCollection(usageAlerts, normalizeUsageAlert, skipped).slice(0, MAX_USAGE_ALERTS),
+  }
+}
+
+function stateLoadError(reason: string): Error {
+  return new Error(`Grok UI state could not be loaded: ${reason} The existing state.json was preserved and writes are disabled. Repair the file or restore a valid backup, then restart.`)
+}
+
 export class SessionStateStore {
   readonly directory: string
   readonly file: string
   private state: PersistedState = structuredClone(EMPTY_STATE)
-  private loaded = false
+  private loadPromise: Promise<void> | null = null
   private writeQueue: Promise<void> = Promise.resolve()
+  private lastWriteError: unknown = null
 
   constructor(directory = process.env.GROK_UI_STATE_DIR || path.join(os.homedir(), '.grok-ui')) {
     this.directory = path.resolve(directory)
@@ -234,54 +304,50 @@ export class SessionStateStore {
   }
 
   async load(): Promise<void> {
-    if (this.loaded) return
+    this.loadPromise ??= this.readState()
+    await this.loadPromise
+  }
+
+  private async readState(): Promise<void> {
+    let content: string
     try {
-      const raw = JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<PersistedState>
-      const annotations: Record<string, SessionAnnotation> = {}
-      Object.entries(raw.sessions || {}).forEach(([id, value]) => {
-        if (!safeId(id) || !value || typeof value !== 'object') return
-        const annotation = value as Partial<SessionAnnotation>
-        annotations[id] = {
-          title: typeof annotation.title === 'string' ? annotation.title : undefined,
-          archived: annotation.archived === true,
-          updatedAt: typeof annotation.updatedAt === 'string'
-            ? annotation.updatedAt
-            : new Date().toISOString(),
-        }
-      })
-      this.state = {
-        version: 3,
-        sessions: annotations,
-        managedSessions: Array.isArray(raw.managedSessions)
-          ? raw.managedSessions.map(normalizeControlSession).filter((item): item is ControlSession => item !== null)
-          : [],
-        usageEntries: Array.isArray(raw.usageEntries)
-          ? raw.usageEntries
-            .map(normalizeUsageEntry)
-            .filter((item): item is UsageLedgerEntry => item !== null)
-            .slice(0, MAX_USAGE_ENTRIES)
-          : [],
-        usageBudgets: Array.isArray(raw.usageBudgets)
-          ? raw.usageBudgets
-            .map(normalizeUsageBudget)
-            .filter((item): item is UsageBudget => item !== null)
-            .slice(0, MAX_USAGE_BUDGETS)
-          : [],
-        usageAlerts: Array.isArray(raw.usageAlerts)
-          ? raw.usageAlerts
-            .map(normalizeUsageAlert)
-            .filter((item): item is UsageBudgetAlert => item !== null)
-            .slice(0, MAX_USAGE_ALERTS)
-          : [],
-      }
-    } catch {
-      this.state = structuredClone(EMPTY_STATE)
+      content = await fs.readFile(this.file, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw stateLoadError('The file could not be read.')
     }
-    this.loaded = true
+    let raw: unknown
+    try {
+      raw = JSON.parse(content)
+    } catch {
+      throw stateLoadError('The file contains invalid JSON.')
+    }
+    if (!isRecord(raw)) throw stateLoadError('The state schema is invalid.')
+    if (raw.version !== 1 && raw.version !== 2 && raw.version !== 3) {
+      throw stateLoadError('The state version is unsupported by this Grok UI release.')
+    }
+    const skipped: SkippedRecords = { count: 0 }
+    let state: PersistedState
+    try {
+      state = normalizeState(raw, skipped)
+    } catch {
+      throw stateLoadError('The state schema contains invalid collections.')
+    }
+    if (skipped.count > 0) {
+      const backup = `${this.file}.invalid-${Date.now()}`
+      try {
+        await fs.copyFile(this.file, backup, fsConstants.COPYFILE_EXCL)
+      } catch {
+        throw stateLoadError(`The file contains ${skipped.count} invalid record(s) and a backup could not be written.`)
+      }
+      console.warn(`[grok-ui] Skipped ${skipped.count} invalid record(s) in ${this.file}; the original was copied to ${backup}.`)
+    }
+    this.state = state
   }
 
   annotation(id: string): SessionAnnotation | null {
-    return this.state.sessions[id] || null
+    const annotation = this.state.sessions[id]
+    return annotation ? { ...annotation } : null
   }
 
   apply(row: SessionRow): SessionRow {
@@ -295,15 +361,7 @@ export class SessionStateStore {
   }
 
   managedSessions(): ControlSession[] {
-    return this.state.managedSessions.map((session) => ({
-      ...session,
-      feed: [...session.feed],
-      workflows: session.workflows.map((workflow) => ({
-        ...workflow,
-        phases: workflow.phases.map((phase) => ({ ...phase })),
-        agents: workflow.agents.map((agent) => ({ ...agent })),
-      })),
-    }))
+    return structuredClone(this.state.managedSessions)
   }
 
   async annotate(
@@ -311,30 +369,27 @@ export class SessionStateStore {
     patch: { title?: string; archived?: boolean },
   ): Promise<SessionAnnotation> {
     if (!safeId(id)) throw new Error('Invalid session identifier.')
-    const existing = this.annotation(id)
-    const title = patch.title === undefined ? existing?.title : patch.title.trim()
-    if (title && title.length > 160) throw new Error('Session title exceeds 160 characters.')
-    const annotation: SessionAnnotation = {
-      title: title || undefined,
-      archived: patch.archived === undefined ? existing?.archived === true : patch.archived,
-      updatedAt: new Date().toISOString(),
-    }
-    this.state.sessions[id] = annotation
-    await this.persist()
-    return annotation
+    const requestedTitle = patch.title?.trim()
+    const requestedArchived = patch.archived
+    if (requestedTitle && requestedTitle.length > 160) throw new Error('Session title exceeds 160 characters.')
+    return this.mutate((next) => {
+      const existing = next.sessions[id]
+      const annotation: SessionAnnotation = {
+        title: requestedTitle === undefined ? existing?.title : requestedTitle || undefined,
+        archived: requestedArchived === undefined ? existing?.archived === true : requestedArchived,
+        updatedAt: new Date().toISOString(),
+      }
+      next.sessions[id] = annotation
+      return { ...annotation }
+    })
   }
 
   async saveManagedSessions(sessions: ControlSession[]): Promise<void> {
-    this.state.managedSessions = sessions.map((session) => ({
-      ...session,
-      feed: session.feed.slice(-120),
-      workflows: session.workflows.map((workflow) => ({
-        ...workflow,
-        phases: workflow.phases.map((phase) => ({ ...phase })),
-        agents: workflow.agents.map((agent) => ({ ...agent })),
-      })),
-    }))
-    await this.persist()
+    // Persist only records the loader will accept on the next start.
+    const snapshot = structuredClone(sessions)
+      .map((session) => ({ ...session, feed: session.feed.slice(-120) }))
+      .filter((session) => normalizeControlSession(session) !== null)
+    await this.mutate((next) => { next.managedSessions = snapshot })
   }
 
   usageEntries(): UsageLedgerEntry[] {
@@ -348,25 +403,22 @@ export class SessionStateStore {
   }
 
   async mergeUsageEntries(entries: UsageLedgerEntry[]): Promise<void> {
-    const previousSnapshot = JSON.stringify(this.state.usageEntries)
-    const merged = new Map(this.state.usageEntries.map((entry) => [entry.id, entry]))
-    entries.forEach((entry) => {
-      const normalized = normalizeUsageEntry(entry)
-      if (!normalized) return
-      const previous = merged.get(normalized.id)
-      merged.set(normalized.id, {
-        ...previous,
-        ...normalized,
-        startedAt: previous && previous.startedAt < normalized.startedAt
-          ? previous.startedAt
-          : normalized.startedAt,
+    const normalizedEntries = entries.map(normalizeUsageEntry)
+      .filter((item): item is UsageLedgerEntry => item !== null)
+    await this.mutate((next) => {
+      const merged = new Map(next.usageEntries.map((entry) => [entry.id, entry]))
+      normalizedEntries.forEach((entry) => {
+        const previous = merged.get(entry.id)
+        merged.set(entry.id, {
+          ...previous,
+          ...entry,
+          startedAt: previous && previous.startedAt < entry.startedAt ? previous.startedAt : entry.startedAt,
+        })
       })
-    })
-    this.state.usageEntries = [...merged.values()]
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-      .slice(0, MAX_USAGE_ENTRIES)
-    if (JSON.stringify(this.state.usageEntries) === previousSnapshot) return
-    await this.persist()
+      next.usageEntries = [...merged.values()]
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+        .slice(0, MAX_USAGE_ENTRIES)
+    }, true)
   }
 
   usageBudgets(): UsageBudget[] {
@@ -378,34 +430,55 @@ export class SessionStateStore {
   }
 
   async saveUsageBudgets(budgets: UsageBudget[]): Promise<void> {
-    this.state.usageBudgets = budgets
+    const normalized = budgets
       .map(normalizeUsageBudget)
       .filter((item): item is UsageBudget => item !== null)
       .slice(0, MAX_USAGE_BUDGETS)
-    await this.persist()
+    await this.mutate((next) => { next.usageBudgets = normalized })
   }
 
   async saveUsageAlerts(alerts: UsageBudgetAlert[]): Promise<void> {
-    this.state.usageAlerts = alerts
+    const normalized = alerts
       .map(normalizeUsageAlert)
       .filter((item): item is UsageBudgetAlert => item !== null)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, MAX_USAGE_ALERTS)
-    await this.persist()
+    await this.mutate((next) => { next.usageAlerts = normalized })
   }
 
   async flush(): Promise<void> {
     await this.writeQueue
+    await this.load()
+    if (this.lastWriteError) throw this.lastWriteError
   }
 
-  private async persist(): Promise<void> {
-    const snapshot = JSON.stringify(this.state, null, 2)
-    this.writeQueue = this.writeQueue.then(async () => {
-      await fs.mkdir(this.directory, { recursive: true, mode: 0o700 })
-      const temporary = path.join(this.directory, `.state.${process.pid}.${Date.now()}.tmp`)
+  private async mutate<T>(change: (state: PersistedState) => T, skipUnchanged = false): Promise<T> {
+    const operation = this.writeQueue.then(async () => {
+      await this.load()
+      const next = structuredClone(this.state)
+      const result = change(next)
+      if (!skipUnchanged || JSON.stringify(next) !== JSON.stringify(this.state)) await this.persist(next)
+      this.state = next
+      return result
+    })
+    this.writeQueue = operation.then(
+      () => { this.lastWriteError = null },
+      (error) => { this.lastWriteError = error },
+    )
+    return operation
+  }
+
+  private async persist(state: PersistedState): Promise<void> {
+    const snapshot = JSON.stringify(state, null, 2)
+    await fs.mkdir(this.directory, { recursive: true, mode: 0o700 })
+    const temporary = path.join(this.directory, `.state.${process.pid}.${Date.now()}.tmp`)
+    let renamed = false
+    try {
       await fs.writeFile(temporary, snapshot, { encoding: 'utf8', mode: 0o600 })
       await fs.rename(temporary, this.file)
-    })
-    await this.writeQueue
+      renamed = true
+    } finally {
+      if (!renamed) await fs.rm(temporary, { force: true }).catch(() => {})
+    }
   }
 }

@@ -8,12 +8,12 @@ import {
   Search,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { getWorkspaceDiff, getWorkspaceSnapshot } from '../api'
+import { getWorkspaceSnapshot } from '../api'
+import { useWorkspaceDiff } from '../hooks/useWorkspaceDiff'
 import type {
   DashboardPayload,
   LiveSnapshot,
   WorkspaceChangeEvent,
-  WorkspaceDiff,
   WorkspaceSnapshot,
 } from '../types'
 import { usePrivacy } from '../privacy'
@@ -28,6 +28,14 @@ interface ChangesViewProps {
   workspaceChange: WorkspaceChangeEvent | null
 }
 
+interface WorkspaceState {
+  cwd: string
+  snapshot: WorkspaceSnapshot | null
+  loading: boolean
+  error: string
+  revision: number
+}
+
 export function ChangesView({ data, live, connected, workspaceChange }: ChangesViewProps) {
   const privacy = usePrivacy()
   const workspaces = useMemo(() => [...new Set([
@@ -35,62 +43,81 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
     ...data.sessions.map((session) => session.cwd),
   ].filter(Boolean))], [data.sessions, live])
   const [cwd, setCwd] = useState(workspaces[0] || '')
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
-  const [selected, setSelected] = useState('')
-  const [diff, setDiff] = useState<WorkspaceDiff | null>(null)
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
+    cwd: '', snapshot: null, loading: false, error: '', revision: 0,
+  })
+  const [refreshVersion, setRefreshVersion] = useState(0)
   const [query, setQuery] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const snapshot = workspaceState.cwd === cwd ? workspaceState.snapshot : null
+  const loading = Boolean(cwd && (workspaceState.cwd !== cwd || workspaceState.loading))
+  const {
+    selectedFile, openFile, diff, loading: diffLoading, error: diffError, reset,
+  } = useWorkspaceDiff(snapshot?.root || '', workspaceState.revision)
+  const error = (workspaceState.cwd === cwd ? workspaceState.error : '') || diffError
+  const repositoryCandidates = JSON.stringify(
+    cwd === workspaces[0] ? workspaces.slice(1, 1 + REPOSITORY_PROBE_LIMIT) : [],
+  )
+  useEffect(() => {
+    if (!workspaces.includes(cwd)) setCwd(workspaces[0] || '')
+  }, [cwd, workspaces])
 
-  const loadWorkspace = async (workspace = cwd) => {
-    if (!workspace) return
-    setLoading(true)
-    setError('')
-    try {
-      let payload = await getWorkspaceSnapshot(workspace)
-      if (!payload.repository && workspace === workspaces[0]) {
-        // Probe only a handful of recent workspaces for a repository; each
-        // probe starts a Git status read on the server.
-        for (const candidate of workspaces.slice(1, 1 + REPOSITORY_PROBE_LIMIT)) {
-          const candidatePayload = await getWorkspaceSnapshot(candidate)
-          if (candidatePayload.repository) {
-            setCwd(candidate)
-            payload = candidatePayload
-            break
+  useEffect(() => {
+    if (workspaceChange?.root && workspaceChange.root === snapshot?.root) {
+      setRefreshVersion((current) => current + 1)
+    }
+  }, [workspaceChange, snapshot?.root])
+
+  useEffect(() => {
+    if (!cwd) return
+    const controller = new AbortController()
+    setWorkspaceState((current) => ({
+      cwd,
+      snapshot: current.cwd === cwd ? current.snapshot : null,
+      loading: true,
+      error: '',
+      revision: current.revision,
+    }))
+    const loadWorkspace = async () => {
+      try {
+        let workspace = cwd
+        let payload = await getWorkspaceSnapshot(workspace, controller.signal)
+        if (controller.signal.aborted) return
+        if (!payload.repository) {
+          // Bound fallback Git status reads, and stop probing as soon as this
+          // workspace request is replaced by a selection or refresh.
+          for (const candidate of JSON.parse(repositoryCandidates) as string[]) {
+            const candidatePayload = await getWorkspaceSnapshot(candidate, controller.signal)
+            if (controller.signal.aborted) return
+            if (candidatePayload.repository) {
+              workspace = candidate
+              payload = candidatePayload
+              setCwd(candidate)
+              break
+            }
           }
         }
+        setWorkspaceState((current) => ({
+          cwd: workspace, snapshot: payload, loading: false, error: '', revision: current.revision + 1,
+        }))
+      } catch (loadError) {
+        if (!controller.signal.aborted) {
+          setWorkspaceState((current) => ({
+            ...current,
+            loading: false,
+            error: loadError instanceof Error ? loadError.message : 'Unable to inspect workspace.',
+          }))
+        }
       }
-      setSnapshot(payload)
-      if (selected && payload.files.some((file) => file.path === selected)) {
-        setDiff(await getWorkspaceDiff(payload.root, selected))
-      } else if (!payload.files.some((file) => file.path === selected)) {
-        setSelected(payload.files[0]?.path || '')
-        setDiff(null)
-      }
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to inspect workspace.')
-    } finally {
-      setLoading(false)
     }
-  }
+    void loadWorkspace()
+    return () => controller.abort()
+  }, [cwd, refreshVersion, repositoryCandidates])
 
   useEffect(() => {
-    void loadWorkspace(cwd)
-  }, [cwd]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (workspaceChange?.root === snapshot?.root) void loadWorkspace(cwd)
-  }, [workspaceChange]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const openDiff = async (file: string) => {
-    setSelected(file)
-    setError('')
-    try {
-      setDiff(await getWorkspaceDiff(cwd, file))
-    } catch (diffError) {
-      setError(diffError instanceof Error ? diffError.message : 'Unable to load diff.')
-    }
-  }
+    if (!snapshot || snapshot.files.some((file) => file.path === selectedFile)) return
+    if (snapshot.files[0]) openFile(snapshot.files[0].path)
+    else reset()
+  }, [snapshot, selectedFile, openFile, reset])
 
   const files = snapshot?.files.filter((file) => file.path.toLowerCase().includes(query.toLowerCase())) || []
   const watching = snapshot ? snapshot.watching !== false && snapshot.repository : true
@@ -122,7 +149,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
           <span className={`status-dot ${connected && watching ? 'is-live' : ''}`} />
           {!connected ? 'RECONNECTING' : watching ? 'LIVE WATCH' : 'MANUAL REFRESH'}
         </span>
-        <button className="icon-button" onClick={() => void loadWorkspace()} aria-label="Refresh changes">
+        <button className="icon-button" onClick={() => setRefreshVersion((current) => current + 1)} aria-label="Refresh changes">
           <RefreshCw size={17} className={loading ? 'is-spinning' : ''} />
         </button>
       </section>
@@ -149,7 +176,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
           </label>
           <div className="change-file-list">
             {files.map((file) => (
-              <button className={selected === file.path ? 'is-active' : ''} onClick={() => void openDiff(file.path)} key={file.path}>
+              <button className={selectedFile === file.path ? 'is-active' : ''} onClick={() => openFile(file.path)} key={file.path}>
                 <span className={`file-status status-${file.status.replaceAll(' ', '')}`}>{file.status}</span>
                 <span className="file-path">{privacy.file(file.path)}</span>
                 <span className="file-delta"><i>+{file.additions}</i><em>−{file.deletions}</em></span>
@@ -171,7 +198,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
 
         <section className="diff-viewer">
           <header>
-            <div><span className="panel-index">02</span><h2>{selected ? privacy.file(selected) : 'Select a file'}</h2></div>
+            <div><span className="panel-index">02</span><h2>{selectedFile ? privacy.file(selectedFile) : 'Select a file'}</h2></div>
             {diff?.truncated && <span className="diff-truncated">TRUNCATED</span>}
           </header>
           {diff ? (
@@ -179,7 +206,7 @@ export function ChangesView({ data, live, connected, workspaceChange }: ChangesV
               {privacy.enabled ? privacy.content(diff.diff) : diff.diff || 'No textual diff available.'}
             </pre>
           ) : (
-            <div className="diff-empty"><Braces size={24} /><span>Choose a changed file to inspect its patch.</span></div>
+            <div className="diff-empty"><Braces size={24} /><span>{diffLoading ? 'Loading diff…' : 'Choose a changed file to inspect its patch.'}</span></div>
           )}
         </section>
       </section>

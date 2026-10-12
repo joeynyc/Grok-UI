@@ -50,7 +50,7 @@
 .page-intro > p {
   margin: 0 0 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-body);
   line-height: 1.8;
 }
 
