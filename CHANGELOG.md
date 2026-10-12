@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The Fleet host editor keeps focus and typed text while the fleet refreshes.
+  Each refresh used to move focus back to the first field mid-entry, and with
+  Privacy Mode on it cleared the fields of a host being edited.
 - Attaching a recorded session starts its first follow-up immediately. Stop
   clears every queued prompt and rejects new prompts until cancellation ends,
   even when late plan notifications arrive.

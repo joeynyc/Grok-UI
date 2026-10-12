@@ -344,4 +344,26 @@ test.describe.serial('read-only fleet monitoring', () => {
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
     expect(await unreadableVisibleText(page)).toEqual([])
   })
+
+  test('keeps focus and typed text in the host editor while the fleet refreshes', async ({ page }) => {
+    await clearFleet(page.request)
+    await page.goto('/')
+    await page.getByRole('button', { name: /Fleet/ }).click()
+    await page.getByRole('button', { name: 'Register host' }).first().click()
+    const editor = page.getByRole('dialog', { name: 'Register a host' })
+    await editor.getByLabel('Transport').selectOption('direct')
+    const url = editor.getByLabel('Loopback agent URL')
+    await typeInto(url, 'http://127.0.0.1:')
+
+    await registerHost(page.request, 'Background Refresh Workstation', {
+      url: 'http://127.0.0.1:65533',
+      token: 'background-refresh-token',
+    })
+    await expect(page.getByText('Background Refresh Workstation').first()).toBeAttached()
+
+    await expect(url).toBeFocused()
+    await url.pressSequentially('4311')
+    await expect(url).toHaveValue('http://127.0.0.1:4311')
+    await clearFleet(page.request)
+  })
 })
