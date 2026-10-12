@@ -37,6 +37,11 @@ export function HostEditor({
   const [error, setError] = useState('')
   const [confirmRemove, setConfirmRemove] = useState(false)
   const editorRef = useRef<HTMLFormElement>(null)
+  // Fleet re-renders on every poll and passes a fresh onClose each time. Reading
+  // it through a ref keeps the focus trap mounted once, so a refresh cannot pull
+  // focus back to the first field while someone is typing.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -48,7 +53,7 @@ export function HostEditor({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (event.key !== 'Tab') return
@@ -69,16 +74,19 @@ export function HostEditor({
       document.removeEventListener('keydown', onKeyDown)
       previous?.focus()
     }
-  }, [onClose])
+  }, [])
 
+  // Keyed on the host id, not the object: each poll delivers a new host object,
+  // and clearing on identity would wipe what was typed after every refresh.
+  const hostId = host?.id
   useEffect(() => {
-    if (!privacy.enabled || !host) return
+    if (!privacy.enabled || !hostId) return
     setLabel('')
     setBaseUrl('')
     setSshTarget('')
     setToken('')
     setControlToken('')
-  }, [host, privacy.enabled])
+  }, [hostId, privacy.enabled])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
