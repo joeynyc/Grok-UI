@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-10-12
 
-- The Fleet host editor keeps focus and typed text while the fleet refreshes.
-  Each refresh used to move focus back to the first field mid-entry, and with
-  Privacy Mode on it cleared the fields of a host being edited.
+- Overview no longer shows a fake Health score or an unlabeled second set of
+  turn and tool totals. The 14-day matrix uses the local calendar (so tonight's
+  work stays on today), says sessions were last active that day, and the
+  metric cards, workspaces, and Activity link jump to the work. System chrome
+  follows the active theme instead of Operator lime. Model mix counts each
+  session once by its primary model, so it sums to the session count and
+  matches the Model column in Sessions.
 - Attaching a recorded session starts its first follow-up immediately. Stop
   clears every queued prompt and rejects new prompts until cancellation ends,
   even when late plan notifications arrive.
@@ -24,30 +28,28 @@
   cover the response body as well as the headers.
 - Session consoles share timeline behavior, preserve an unfinished rename,
   and keep the reading position during updates until Latest is chosen.
-- Mobile starts with compact headers unless a preference was saved. First-run
-  setup puts the next required action first, and the launch form leads with
-  workspace and instruction. Text and toggles are easier to read, empty runtime
-  panels take less space, Event Horizon is quieter, and Minimal Calm commands
-  use legible theme colors.
-
-- Overview no longer shows a fake Health score or an unlabeled second set of
-  turn and tool totals. The 14-day matrix uses the local calendar (so tonight's
-  work stays on today), says sessions were last active that day, and the
-  metric cards, workspaces, and Activity link jump to the work. System chrome
-  follows the active theme instead of Operator lime. Model mix counts each
-  session once by its primary model, so it sums to the session count and
-  matches the Model column in Sessions.
-
+- The Fleet host editor keeps focus and typed text while the fleet refreshes.
+  Each refresh used to move focus back to the first field mid-entry, and with
+  Privacy Mode on it cleared the fields of a host being edited.
+- Room shortcuts (1–9, l, m, t, /) no longer fire while a `<select>` has focus
+  or while typing inside a dialog. Picking a model or permission mode with the
+  keyboard, or entering a host URL, stayed on the room the user was in only by
+  luck; in WebKit it jumped rooms mid-entry and closed the host editor.
 - Room headers can fold to one line. Every header carries a toggle at its
   right edge, and Themes offers the same choice as Full or Compact. Compact
   keeps the index, kicker, and title on a single 44px row and hides the
   description, so rosters, tables, and diffs start about 85px higher. The
   choice is stored on the device like the theme. Changes, Control, Fleet,
   Usage, and Runs now share the same header component as the other rooms.
-- Room shortcuts (1–9, l, m, t, /) no longer fire while a `<select>` has focus
-  or while typing inside a dialog. Picking a model or permission mode with the
-  keyboard, or entering a host URL, stayed on the room the user was in only by
-  luck; in WebKit it jumped rooms mid-entry and closed the host editor.
+- Mobile starts with compact headers unless a preference was saved. First-run
+  setup puts the next required action first, and the launch form leads with
+  workspace and instruction. Text and toggles are easier to read, empty runtime
+  panels take less space, Event Horizon is quieter, and Minimal Calm commands
+  use legible theme colors.
+- Security: `proxy-addr` is updated to 2.0.8 for GHSA-jqcg-44mw-7w3h, a
+  critical IP-spoofing advisory in Express's trusted-proxy handling.
+- Dependencies: React and React DOM 19.3.0, Vite 8.3.4, Vitest 5.0.4,
+  lucide-react 1.55.0, concurrently 10.0.6, and @types/node 26.6.5.
 - `src/App.tsx` now holds only routing, data loading, the event stream, and
   shortcuts. Chrome moved to `src/shell/`, the Live, Overview, Sessions,
   Activity, Library, Memory, and Themes rooms to `src/views/`, and number and
