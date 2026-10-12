@@ -1,9 +1,10 @@
 # Grok UI roadmap
 
-Grok UI v0.11.0 provides local session discovery, ACP control, confirmed
+Grok UI v0.14.0 provides local session discovery, ACP control, confirmed
 interruption, workflow orchestration, Git and runtime inspection, a persistent
-usage ledger, multi-machine monitoring, and secure managed remote sessions.
-The roadmap extends those foundations instead of replacing them.
+usage ledger, multi-machine monitoring, secure managed remote sessions, and a
+hardened session console. The roadmap extends those foundations instead of
+replacing them.
 
 ## v0.8.2 — Release and recovery
 
@@ -79,7 +80,23 @@ acceptance matrix are tracked in
 The managed-session MVP shipped in v0.11.0; workflow lifecycle controls and
 shared/team access remain later additions.
 
-## v0.12 — VS Code
+## v0.12–v0.14 — Session console and reliability
+
+These releases went to the daily console rather than a new surface:
+
+- Answer Grok's plan-approval request directly and keep plan, todos, and the
+  prompt queue up front in the session console (v0.12).
+- Watch files with native recursive `fs.watch` so large repositories no longer
+  exhaust file descriptors, and show a recoverable screen when the server is
+  unreachable (v0.13).
+- Make Overview a truthful glance, fold room headers to one line, harden Stop
+  and queued prompts, recover from individual invalid state records, and stop
+  client timeouts from reporting failure on work the server is still doing
+  (v0.14).
+
+Details are in [`CHANGELOG.md`](../CHANGELOG.md).
+
+## Next — VS Code
 
 - Ship a thin extension over the same host, session, control, and event APIs.
 - Associate sessions with the current workspace.
