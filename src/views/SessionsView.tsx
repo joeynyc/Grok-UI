@@ -34,7 +34,7 @@ export function SessionsView({
     return data.sessions.filter((session) => {
       if (archiveScope === 'active' ? session.archived : !session.archived) return false
       if (!normalized) return true
-      return [session.title, session.summary, session.cwd, session.model, session.agent]
+      return [session.title, session.summary, session.cwd, session.workspace, session.model, session.agent]
         .some((value) => value.toLowerCase().includes(normalized))
     })
   }, [archiveScope, data.sessions, query])

@@ -3,7 +3,6 @@ import type { Dirent } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import type {
-  ActivityDay,
   DashboardPayload,
   LibraryItem,
   MemoryItem,
@@ -12,10 +11,10 @@ import type {
   SessionStatus,
 } from './types.js'
 import { SessionStateStore } from './session-state.js'
+import { buildActivity } from './activity.js'
 
 type Json = Record<string, unknown>
 
-const DAY_MS = 86_400_000
 const RECENT_MS = 24 * 60 * 60_000
 
 function asObject(value: unknown): Json {
@@ -130,7 +129,6 @@ function normalizeDate(input: string): string {
 async function sessionFromSummary(summaryFile: string): Promise<{
   row: SessionRow
   tools: string[]
-  models: string[]
 }> {
   const sessionDir = path.dirname(summaryFile)
   const [summary, signals, bytes] = await Promise.all([
@@ -152,10 +150,9 @@ async function sessionFromSummary(summaryFile: string): Promise<{
   const linesAdded = asNumber(signals.agentLinesAdded)
   const linesRemoved = asNumber(signals.agentLinesRemoved)
   const rawContextUsage = asNumber(signals.contextWindowUsage)
-  const models = asStringArray(signals.modelsUsed)
   const primaryModel = asString(signals.primaryModelId)
     || asString(summary.current_model_id)
-    || models[0]
+    || asStringArray(signals.modelsUsed)[0]
     || 'unknown'
 
   return {
@@ -186,7 +183,6 @@ async function sessionFromSummary(summaryFile: string): Promise<{
       archived: false,
     },
     tools: asStringArray(signals.toolsUsed),
-    models: models.length ? models : [primaryModel],
   }
 }
 
@@ -270,35 +266,6 @@ async function collectMemory(grokHome: string): Promise<MemoryItem[]> {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
-function buildActivity(sessions: SessionRow[], days = 14): ActivityDay[] {
-  const byDate = new Map<string, ActivityDay>()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  for (let index = days - 1; index >= 0; index -= 1) {
-    const date = new Date(today.getTime() - index * DAY_MS)
-    const key = date.toISOString().slice(0, 10)
-    byDate.set(key, {
-      date: key,
-      label: date.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2),
-      sessions: 0,
-      turns: 0,
-      toolCalls: 0,
-      errors: 0,
-      linesChanged: 0,
-    })
-  }
-  for (const session of sessions) {
-    const day = byDate.get(session.updatedAt.slice(0, 10))
-    if (!day) continue
-    day.sessions += 1
-    day.turns += session.turns
-    day.toolCalls += session.toolCalls
-    day.errors += session.errors
-    day.linesChanged += session.linesAdded + session.linesRemoved
-  }
-  return [...byDate.values()]
-}
-
 export class GrokStore {
   readonly grokHome: string
   private cache: { at: number; payload: DashboardPayload } | null = null
@@ -346,8 +313,10 @@ export class GrokStore {
     const tools = new Map<string, number>()
     const workspaces = new Map<string, number>()
 
-    sessionData.forEach(({ row, models: sessionModels, tools: sessionTools }) => {
-      sessionModels.forEach((model) => models.set(model, (models.get(model) || 0) + 1))
+    // Each session counts once, by its primary model, so the mix sums to the
+    // session count and matches the Model column in Sessions.
+    sessionData.forEach(({ row, tools: sessionTools }) => {
+      models.set(row.model, (models.get(row.model) || 0) + 1)
       sessionTools.forEach((tool) => tools.set(tool, (tools.get(tool) || 0) + 1))
       workspaces.set(row.workspace, (workspaces.get(row.workspace) || 0) + 1)
     })

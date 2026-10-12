@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   clockTime,
   compactNumber,
+  countLabel,
   elapsed,
   formatBytes,
   formatNumber,
@@ -18,6 +19,14 @@ describe('formatNumber', () => {
     expect(formatNumber(9_876)).toBe('9,876')
     expect(formatNumber(10_000)).toBe('10K')
     expect(formatNumber(1_234_567)).toBe('1.2M')
+  })
+})
+
+describe('countLabel', () => {
+  it('pluralizes after a formatted count', () => {
+    expect(countLabel(1, 'turn')).toBe('1 turn')
+    expect(countLabel(2, 'turn')).toBe('2 turns')
+    expect(countLabel(10_000, 'tool')).toBe('10K tools')
   })
 })
 

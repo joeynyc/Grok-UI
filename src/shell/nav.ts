@@ -31,7 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'control', index: '08', label: 'Control', eyebrow: 'Operate', icon: Command, shortcut: '8' },
   { id: 'runs', index: '02', label: 'Runs', eyebrow: 'Orchestrate', icon: Workflow, shortcut: '2' },
   { id: 'changes', index: '03', label: 'Changes', eyebrow: 'Inspect', icon: GitCompareArrows, shortcut: '3' },
-  { id: 'overview', index: '05', label: 'Overview', eyebrow: 'Command', icon: Gauge, shortcut: '5' },
+  { id: 'overview', index: '05', label: 'Overview', eyebrow: 'Glance', icon: Gauge, shortcut: '5' },
   { id: 'sessions', index: '04', label: 'Sessions', eyebrow: 'Archive', icon: Layers3, shortcut: '4' },
   { id: 'activity', index: '09', label: 'Activity', eyebrow: 'Signals', icon: Activity, shortcut: '9' },
   { id: 'usage', index: '06', label: 'Usage', eyebrow: 'Ledger', icon: WalletCards, shortcut: '6' },

@@ -21,19 +21,19 @@ export function ActivityView({ data }: { data: DashboardPayload }) {
         index="09"
         eyebrow="Operational telemetry"
         title={<>The shape of<br /><em>the work.</em></>}
-        description="A two-week read on agent velocity, tool intensity, code movement, and friction."
+        description="Sessions last active in the last two weeks, with the lifetime turns, tools, and errors those sessions recorded."
       />
       <section className="signal-metrics">
         <SignalMetrics totals={totals} />
       </section>
-      <Panel className="wide-activity section-gap" index="03A" title="Daily operating envelope" meta="Last 14 days">
+      <Panel className="wide-activity section-gap" index="03A" title="Daily operating envelope" meta="Last active that day">
         <ActivityMatrix days={data.activity} />
       </Panel>
       <section className="two-col-grid section-gap">
         <Panel index="03B" title="Tool distribution" meta="Session frequency">
           <RankedBars data={data.tools} empty="No tool activity has been recorded." />
         </Panel>
-        <Panel index="03C" title="Model distribution" meta="Session frequency">
+        <Panel index="03C" title="Model distribution" meta="Primary model per session">
           <RankedBars data={data.models} empty="No model activity has been recorded." />
         </Panel>
       </section>
@@ -64,7 +64,8 @@ function SignalMetric({ label, value, icon: Icon, warning = false }: { label: st
 }
 
 export function ActivityMatrix({ days }: { days: ActivityDay[] }) {
-  const metrics: Array<{ key: keyof Pick<ActivityDay, 'turns' | 'toolCalls' | 'linesChanged' | 'errors'>; label: string }> = [
+  const metrics: Array<{ key: keyof Pick<ActivityDay, 'sessions' | 'turns' | 'toolCalls' | 'linesChanged' | 'errors'>; label: string }> = [
+    { key: 'sessions', label: 'Sessions' },
     { key: 'turns', label: 'Turns' },
     { key: 'toolCalls', label: 'Tools' },
     { key: 'linesChanged', label: 'Code Δ' },
@@ -89,7 +90,7 @@ export function ActivityMatrix({ days }: { days: ActivityDay[] }) {
                   key={day.date}
                   className={`matrix-cell ${metric.key === 'errors' && value ? 'is-error' : ''}`}
                   style={{ '--intensity': intensity } as React.CSSProperties}
-                  title={`${day.date} · ${metric.label}: ${value}`}
+                  title={`${day.date} · ${metric.label}: ${value} · last active that day`}
                 >
                   <span>{value ? formatNumber(value) : '·'}</span>
                 </div>

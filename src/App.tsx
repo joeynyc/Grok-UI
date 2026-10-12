@@ -321,12 +321,12 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeMobileNav, paletteOpen, remoteSession, selectedSession])
 
-  const setActiveView = (next: ViewId) => {
+  const setActiveView = (next: ViewId, options?: { query?: string }) => {
     const focusMain = mobileNavOpenRef.current
     mobileNavOpenRef.current = false
     mobileNavTriggerRef.current = null
     setView(next)
-    setQuery('')
+    setQuery(options?.query ?? '')
     setMobileNavOpen(false)
     if (focusMain) {
       requestAnimationFrame(() => {
@@ -462,6 +462,7 @@ function App() {
                 connected={streamConnected}
                 onOpenSession={openSession}
                 onNavigate={setActiveView}
+                onSearchSessions={(query) => setActiveView('sessions', { query })}
               />
             )}
             {view === 'sessions' && (

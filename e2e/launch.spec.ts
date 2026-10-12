@@ -300,6 +300,7 @@ test.describe.serial('public launch path', () => {
     await page.goto('/')
     await page.getByRole('button', { name: /Overview/ }).click()
     await expect(page.getByText('Updates connected')).toBeVisible()
+    await expect(page.getByText('Last active that day')).toBeVisible()
 
     const disconnected = await page.request.post('/api/test/disconnect-events')
     expect(disconnected.ok()).toBe(true)
