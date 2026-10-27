@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The dashboard loads about 31% less JavaScript up front (129 kB → 89 kB
+  gzipped). Every room except Live, both session consoles, the launch form,
+  and the runtime panels now load when first opened. If Grok UI is rebuilt or
+  upgraded while a tab is open, opening a room that hasn't loaded yet reloads
+  the page once to pick up the new build instead of showing the error screen.
+
 ## 0.14.0 — 2026-10-12
 
 - Overview no longer shows a fake Health score or an unlabeled second set of

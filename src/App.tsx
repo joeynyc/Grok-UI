@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getAuthStatus,
   getControlSnapshot,
@@ -32,20 +32,59 @@ import type {
   ViewId,
   WorkspaceChangeEvent,
 } from './types'
-import { ActivityView } from './views/ActivityView'
-import { ChangesView } from './views/ChangesView'
-import { ControlView } from './views/ControlView'
-import { FleetView } from './views/FleetView'
-import { LibraryView } from './views/LibraryView'
 import { LiveView } from './views/LiveView'
-import { MemoryView } from './views/MemoryView'
-import { Overview } from './views/Overview'
-import { RemoteSessionWorkbench } from './views/RemoteSessionWorkbench'
-import { SessionsView } from './views/SessionsView'
-import { SessionWorkbench } from './views/SessionWorkbench'
-import { ThemesView } from './views/ThemesView'
-import { UsageView } from './views/UsageView'
-import { WorkflowsView } from './views/WorkflowsView'
+
+const SessionWorkbench = lazy(() =>
+  import('./views/SessionWorkbench').then((module) => ({ default: module.SessionWorkbench })),
+)
+
+const RemoteSessionWorkbench = lazy(() =>
+  import('./views/RemoteSessionWorkbench').then((module) => ({ default: module.RemoteSessionWorkbench })),
+)
+
+const WorkflowsView = lazy(() =>
+  import('./views/WorkflowsView').then((module) => ({ default: module.WorkflowsView })),
+)
+
+const FleetView = lazy(() =>
+  import('./views/FleetView').then((module) => ({ default: module.FleetView })),
+)
+
+const ControlView = lazy(() =>
+  import('./views/ControlView').then((module) => ({ default: module.ControlView })),
+)
+
+const UsageView = lazy(() =>
+  import('./views/UsageView').then((module) => ({ default: module.UsageView })),
+)
+
+const ChangesView = lazy(() =>
+  import('./views/ChangesView').then((module) => ({ default: module.ChangesView })),
+)
+
+const Overview = lazy(() =>
+  import('./views/Overview').then((module) => ({ default: module.Overview })),
+)
+
+const SessionsView = lazy(() =>
+  import('./views/SessionsView').then((module) => ({ default: module.SessionsView })),
+)
+
+const ActivityView = lazy(() =>
+  import('./views/ActivityView').then((module) => ({ default: module.ActivityView })),
+)
+
+const LibraryView = lazy(() =>
+  import('./views/LibraryView').then((module) => ({ default: module.LibraryView })),
+)
+
+const MemoryView = lazy(() =>
+  import('./views/MemoryView').then((module) => ({ default: module.MemoryView })),
+)
+
+const ThemesView = lazy(() =>
+  import('./views/ThemesView').then((module) => ({ default: module.ThemesView })),
+)
 
 // App owns routing, data loading, the event stream, keyboard shortcuts, and
 // presentation preferences. Chrome lives in ./shell, rooms live in ./views.
@@ -434,93 +473,95 @@ function App() {
                 }}
               />
             )}
-            {view === 'live' && (
-              <LiveView
-                live={live}
-                runtime={runtime}
-                data={data}
-                control={control}
-                setup={setup}
-                setupError={setupError}
-                connected={streamConnected}
-                onOpenSession={openSession}
-                onRefresh={() => void load(true)}
-                onRefreshControl={refreshControl}
-              />
-            )}
-            {view === 'control' && (
-              <ControlView
-                data={data}
-                live={live}
-                control={control}
-                onRefresh={refreshControl}
-                onOpenSession={openSession}
-              />
-            )}
-            {view === 'runs' && (
-              <WorkflowsView
-                control={control}
-                connected={streamConnected}
-                onRefresh={refreshControl}
-                onOpenSession={openSession}
-              />
-            )}
-            {view === 'changes' && (
-              <ChangesView
-                data={data}
-                live={live}
-                connected={streamConnected}
-                workspaceChange={workspaceChange}
-              />
-            )}
-            {view === 'overview' && (
-              <Overview
-                data={data}
-                live={live}
-                connected={streamConnected}
-                onOpenSession={openSession}
-                onNavigate={setActiveView}
-                onSearchSessions={(query) => setActiveView('sessions', { query })}
-              />
-            )}
-            {view === 'sessions' && (
-              <SessionsView
-                data={data}
-                live={live}
-                query={query}
-                onQuery={setQuery}
-                onOpenSession={openSession}
-              />
-            )}
-            {view === 'activity' && <ActivityView data={data} />}
-            {view === 'usage' && (
-              <UsageView
-                refreshVersion={refreshVersion}
-                activityVersion={usageActivityVersion}
-              />
-            )}
-            {view === 'fleet' && (
-              <FleetView
-                fleet={fleet}
-                streamConnected={streamConnected}
-                error={fleetError}
-                onReload={refreshFleet}
-                onFleetChange={setFleet}
-                onOpenRemoteSession={(host, session) => {
-                  setRemoteSession({ host, session, opener: takeInteractionTarget() })
-                }}
-              />
-            )}
-            {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
-            {view === 'memory' && <MemoryView data={data} />}
-            {view === 'themes' && (
-              <ThemesView
-                active={theme}
-                onSelect={setTheme}
-                heroDensity={heroDensity}
-                onHeroDensity={setHeroDensity}
-              />
-            )}
+            <Suspense fallback={<LoadingState />}>
+              {view === 'live' && (
+                <LiveView
+                  live={live}
+                  runtime={runtime}
+                  data={data}
+                  control={control}
+                  setup={setup}
+                  setupError={setupError}
+                  connected={streamConnected}
+                  onOpenSession={openSession}
+                  onRefresh={() => void load(true)}
+                  onRefreshControl={refreshControl}
+                />
+              )}
+              {view === 'control' && (
+                <ControlView
+                  data={data}
+                  live={live}
+                  control={control}
+                  onRefresh={refreshControl}
+                  onOpenSession={openSession}
+                />
+              )}
+              {view === 'runs' && (
+                <WorkflowsView
+                  control={control}
+                  connected={streamConnected}
+                  onRefresh={refreshControl}
+                  onOpenSession={openSession}
+                />
+              )}
+              {view === 'changes' && (
+                <ChangesView
+                  data={data}
+                  live={live}
+                  connected={streamConnected}
+                  workspaceChange={workspaceChange}
+                />
+              )}
+              {view === 'overview' && (
+                <Overview
+                  data={data}
+                  live={live}
+                  connected={streamConnected}
+                  onOpenSession={openSession}
+                  onNavigate={setActiveView}
+                  onSearchSessions={(query) => setActiveView('sessions', { query })}
+                />
+              )}
+              {view === 'sessions' && (
+                <SessionsView
+                  data={data}
+                  live={live}
+                  query={query}
+                  onQuery={setQuery}
+                  onOpenSession={openSession}
+                />
+              )}
+              {view === 'activity' && <ActivityView data={data} />}
+              {view === 'usage' && (
+                <UsageView
+                  refreshVersion={refreshVersion}
+                  activityVersion={usageActivityVersion}
+                />
+              )}
+              {view === 'fleet' && (
+                <FleetView
+                  fleet={fleet}
+                  streamConnected={streamConnected}
+                  error={fleetError}
+                  onReload={refreshFleet}
+                  onFleetChange={setFleet}
+                  onOpenRemoteSession={(host, session) => {
+                    setRemoteSession({ host, session, opener: takeInteractionTarget() })
+                  }}
+                />
+              )}
+              {view === 'library' && <LibraryView data={data} query={query} onQuery={setQuery} />}
+              {view === 'memory' && <MemoryView data={data} />}
+              {view === 'themes' && (
+                <ThemesView
+                  active={theme}
+                  onSelect={setTheme}
+                  heroDensity={heroDensity}
+                  onHeroDensity={setHeroDensity}
+                />
+              )}
+            </Suspense>
           </div>
         )}
         </main>
@@ -534,28 +575,30 @@ function App() {
             suspended={mobileNavOpen}
           />
         )}
-        {selectedSession && (
-          <SessionWorkbench
-            sessionId={selectedSession.id}
-            fallback={data?.sessions.find((item) => item.id === selectedSession.id) || selectedSession.fallback}
-            live={live}
-            control={control}
-            returnFocus={selectedSession.opener}
-            onClose={() => setSelectedSession(null)}
-            onUpdated={() => load(true)}
-          />
-        )}
-        {remoteSession && (
-          <RemoteSessionWorkbench
-            hostId={remoteSession.host.id}
-            hostLabel={remoteSession.host.label}
-            transport={remoteSession.host.transport}
-            sessionId={remoteSession.session.id}
-            fallback={remoteSession.session}
-            returnFocus={remoteSession.opener}
-            onClose={() => setRemoteSession(null)}
-          />
-        )}
+        <Suspense fallback={null}>
+          {selectedSession && (
+            <SessionWorkbench
+              sessionId={selectedSession.id}
+              fallback={data?.sessions.find((item) => item.id === selectedSession.id) || selectedSession.fallback}
+              live={live}
+              control={control}
+              returnFocus={selectedSession.opener}
+              onClose={() => setSelectedSession(null)}
+              onUpdated={() => load(true)}
+            />
+          )}
+          {remoteSession && (
+            <RemoteSessionWorkbench
+              hostId={remoteSession.host.id}
+              hostLabel={remoteSession.host.label}
+              transport={remoteSession.host.transport}
+              sessionId={remoteSession.session.id}
+              fallback={remoteSession.session}
+              returnFocus={remoteSession.opener}
+              onClose={() => setRemoteSession(null)}
+            />
+          )}
+        </Suspense>
         {paletteOpen && (
           <CommandPalette
             data={data}
