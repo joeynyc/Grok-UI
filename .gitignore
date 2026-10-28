@@ -11,6 +11,8 @@ dist-server/
 coverage/
 test-results/
 playwright-report/
+reports/
+.stryker-tmp/
 .grok-ui/
 
 # Local demo-production project, raw captures, and rendered media.

@@ -193,19 +193,39 @@ describe('UsageBudgetManager', () => {
 
 describe('usageExport', () => {
   it('redacts sensitive report dimensions before producing JSON or CSV', async () => {
-    const { ledger } = await setup()
+    const { ledger, state } = await setup()
+    await state.mergeUsageEntries([{
+      id: 'usage:workflow-agent-test',
+      kind: 'workflow-agent',
+      sessionId: 'secret-session',
+      sessionTitle: 'Secret launch',
+      workflowId: 'secret-workflow',
+      project: 'secret-project',
+      cwd: '/private/secret-project',
+      model: 'grok-code',
+      agent: 'builder-7',
+      startedAt: '2026-07-25T10:00:00.000Z',
+      updatedAt: '2026-07-26T10:00:00.000Z',
+      inputTokens: { value: 70, source: 'grok-reported' },
+      outputTokens: { value: 30, source: 'grok-reported' },
+      totalTokens: { value: 100, source: 'grok-reported' },
+      cost: { value: null, source: 'unavailable', currency: '' },
+    }])
     const report = ledger.report({
       period: 'all',
-      scope: 'sessions',
+      scope: 'all',
       groupBy: 'project',
       now: new Date('2026-07-26T12:00:00.000Z'),
     })
+    expect(report.entries.map((entry) => entry.agent)).toContain('builder-7')
     const json = usageExport(report, 'json', true)
     const csv = usageExport(report, 'csv', true)
     expect(json.body).toContain('"privacyApplied": true')
     expect(json.body).not.toContain('secret-project')
     expect(json.body).not.toContain('Secret launch')
+    expect(json.body).not.toContain('builder-7')
     expect(csv.body).not.toContain('/private/secret-project')
+    expect(csv.body).not.toContain('builder-7')
     expect(csv.body).toContain('Workspace ')
   })
 })

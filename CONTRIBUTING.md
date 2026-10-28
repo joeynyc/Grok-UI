@@ -11,6 +11,9 @@ Thanks for helping improve Grok UI.
 5. For packaging or startup changes, also run `npm run test:package`.
 6. For host-agent or fleet changes, also run `npm run test:e2e`,
    `npm run test:soak`, and `npm audit --omit=dev --audit-level=high`.
+7. For changes to `server/session-state.ts`, `session-reader.ts`,
+   `live-monitor.ts`, or `usage-export.ts`, run `npm run test:mutation` and
+   check that the mutation score in its summary has not dropped.
 
 Keep the server loopback-only during development. Tests must not depend on real Grok credentials or make model requests.
 
