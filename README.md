@@ -418,6 +418,7 @@ npm run doctor    # Check Node, Grok CLI, authentication, and local state
 npm run setup     # Run preflight checks and create a production build
 npm run check     # Type-check client and server
 npm test          # Run unit and integration tests
+npm run test:mutation # Mutation-test session state, session reader, live monitor, and usage export
 npm run test:e2e  # Run production browser onboarding and control tests
 npm run build     # Produce client and server builds
 npm run verify    # Check, test, and build

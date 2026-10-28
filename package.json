@@ -55,6 +55,7 @@
     "test:e2e:report": "playwright show-report",
     "test:package": "node scripts/package-smoke.mjs",
     "test:soak": "npm run build && node scripts/control-soak.mjs",
+    "test:mutation": "stryker run",
     "release:check": "node scripts/release-check.mjs",
     "verify": "npm run check && npm test && npm run build && npm run release:check",
     "prepare": "npm run build",
@@ -71,6 +72,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "@types/react": "^19.0.0",
