@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -237,6 +238,10 @@ test.describe.serial('read-only fleet monitoring', () => {
 
   test('continues one remote Grok session with live chat, permission, and interruption', async ({ page }) => {
     const setup = await fixture()
+    await fs.writeFile(setup.fleetControlFile, JSON.stringify({
+      healthy: 'online',
+      remoteScenario: randomUUID(),
+    }))
     await page.goto('/')
     await page.getByRole('button', { name: /Fleet/ }).click()
     await registerHost(

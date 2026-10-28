@@ -147,6 +147,12 @@ async function registerControlledFleetHost(page: Page) {
 }
 
 test.describe.serial('public launch path', () => {
+  // Playwright retries a failed serial group from its first test, after the
+  // rest of the run. By then later tests have created managed sessions that
+  // the product cannot remove, so the clean-installation step always fails on
+  // retry and hides the original failure. Fail once with the real error.
+  test.describe.configure({ retries: 0 })
+
   test('defaults a fresh browser to the Event Horizon theme', async ({ page }) => {
     await page.goto('/')
 
