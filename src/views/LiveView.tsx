@@ -1,7 +1,8 @@
 import { Check, CircleAlert, Copy, RefreshCw, TimerReset } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { buildRoster, shouldShowFirstRun } from '../live-roster'
 import { PageIntro } from '../shell/primitives'
+import { LoadingState } from '../shell/screens'
 import type {
   ControlSnapshot,
   DashboardPayload,
@@ -12,8 +13,14 @@ import type {
   SetupStatus,
 } from '../types'
 import { LiveRoster } from './LiveRoster'
-import { RuntimeIntelligencePanels } from './RuntimeIntelligencePanels'
-import { SessionLaunchForm } from './SessionLaunchForm'
+
+const SessionLaunchForm = lazy(() =>
+  import('./SessionLaunchForm').then((module) => ({ default: module.SessionLaunchForm })),
+)
+
+const RuntimeIntelligencePanels = lazy(() =>
+  import('./RuntimeIntelligencePanels').then((module) => ({ default: module.RuntimeIntelligencePanels })),
+)
 
 export function LiveView({
   live,
@@ -99,15 +106,17 @@ export function LiveView({
           <div className="kicker">Runtime clear</div>
           <h2>No active Grok sessions.</h2>
           <p>Start one here, or run Grok in any workspace. Either one appears here the moment it is live.</p>
-          <SessionLaunchForm
-            data={data}
-            live={live}
-            control={control}
-            heading="Start a session"
-            index="01"
-            onRefresh={onRefreshControl}
-            onLaunched={(session) => onOpenSession(session.id)}
-          />
+          <Suspense fallback={<LoadingState />}>
+            <SessionLaunchForm
+              data={data}
+              live={live}
+              control={control}
+              heading="Start a session"
+              index="01"
+              onRefresh={onRefreshControl}
+              onLaunched={(session) => onOpenSession(session.id)}
+            />
+          </Suspense>
         </section>
       ) : (
         <LiveRoster
@@ -118,7 +127,9 @@ export function LiveView({
           onRefresh={onRefreshControl}
         />
       )}
-      <RuntimeIntelligencePanels runtime={runtime} />
+      <Suspense fallback={<LoadingState />}>
+        <RuntimeIntelligencePanels runtime={runtime} />
+      </Suspense>
     </>
   )
 }
@@ -240,15 +251,17 @@ function FirstRunOnboarding({
       {currentStep && <div className="first-run-steps first-run-current">{renderStep(currentStep)}</div>}
       {setupError && <p className="first-run-error" role="status">{setupError}. Use Recheck setup to try again, or start a session below.</p>}
       {canLaunch && <div className="first-run-launch">
-        <SessionLaunchForm
-          data={data}
-          live={live}
-          control={control}
-          heading="Start a session"
-          index="01"
-          onRefresh={onRefreshControl}
-          onLaunched={(session) => onOpenSession(session.id)}
-        />
+        <Suspense fallback={<LoadingState />}>
+          <SessionLaunchForm
+            data={data}
+            live={live}
+            control={control}
+            heading="Start a session"
+            index="01"
+            onRefresh={onRefreshControl}
+            onLaunched={(session) => onOpenSession(session.id)}
+          />
+        </Suspense>
       </div>}
       <details className="first-run-checklist">
         <summary>Setup checklist and CLI commands</summary>
