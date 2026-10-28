@@ -198,13 +198,16 @@ function runtime(partial = false) {
   }
 }
 
-async function healthyMode() {
+async function readControl() {
   try {
-    const control = JSON.parse(await fs.readFile(fleetControlFile, 'utf8'))
-    return control.healthy === 'offline' ? 'offline' : 'online'
+    return JSON.parse(await fs.readFile(fleetControlFile, 'utf8'))
   } catch {
-    return 'online'
+    return {}
   }
+}
+
+async function healthyMode() {
+  return (await readControl()).healthy === 'offline' ? 'offline' : 'online'
 }
 
 function provider({ id, label, degraded = false, incompatible = false, controlled = false }) {
@@ -222,25 +225,42 @@ function provider({ id, label, degraded = false, incompatible = false, controlle
       'remote.permissions.resolve',
     ] : []),
   ]
-  const remoteTranscript = [{
-    id: 'remote-transcript-1',
-    type: 'assistant',
-    title: 'Remote response',
-    text: 'Remote transcript for Example Operator at 100.64.0.9',
-    status: 'completed',
-    timestamp: timestamp(),
-  }]
-  let remoteState = 'idle'
-  let remoteUpdatedAt = timestamp()
-  let remotePermissions = controlled ? [{
-    id: 'remote-permission-1',
-    sessionId: 'remote-session-1',
-    title: 'Allow the remote verification tool?',
-    toolKind: 'execute',
-    toolCallId: 'remote-tool-1',
-    createdAt: timestamp(),
-    options: [{ id: 'allow-once', name: 'Allow once', kind: 'allow_once' }],
-  }] : []
+  let remoteTranscript
+  let remoteState
+  let remoteUpdatedAt
+  let remotePermissions
+  let remoteScenario
+  function resetRemoteSession() {
+    remoteTranscript = [{
+      id: 'remote-transcript-1',
+      type: 'assistant',
+      title: 'Remote response',
+      text: 'Remote transcript for Example Operator at 100.64.0.9',
+      status: 'completed',
+      timestamp: timestamp(),
+    }]
+    remoteState = 'idle'
+    remoteUpdatedAt = timestamp()
+    remotePermissions = controlled ? [{
+      id: 'remote-permission-1',
+      sessionId: 'remote-session-1',
+      title: 'Allow the remote verification tool?',
+      toolKind: 'execute',
+      toolCallId: 'remote-tool-1',
+      createdAt: timestamp(),
+      options: [{ id: 'allow-once', name: 'Allow once', kind: 'allow_once' }],
+    }] : []
+  }
+  resetRemoteSession()
+  // Tests write a new `remoteScenario` to the control file to start the
+  // remote conversation over, so a retry or repeat does not find the
+  // permission already answered and the turn already interrupted.
+  async function syncRemoteScenario() {
+    const scenario = (await readControl()).remoteScenario
+    if (scenario === undefined || scenario === remoteScenario) return
+    remoteScenario = scenario
+    resetRemoteSession()
+  }
   async function online() {
     if (controlled && await healthyMode() === 'offline') {
       throw new Error('Simulated host disconnect.')
@@ -288,6 +308,7 @@ function provider({ id, label, degraded = false, incompatible = false, controlle
     },
     async session() {
       await online()
+      await syncRemoteScenario()
       const current = session()
       return {
         protocolVersion: 1,
