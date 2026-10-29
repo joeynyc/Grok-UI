@@ -81,10 +81,7 @@ async function startMonitor(grokHome: string): Promise<LiveMonitor> {
 }
 
 describe('LiveMonitor feed projection', () => {
-  // Known bug, not pinned here: live-monitor.ts:182 replaces a tool's descriptive
-  // title with the 'tool call update' fallback when an update carries no title.
-  // The tool-merge tests below assert text, status, and row count only.
-  it('collapses a tool call and its updates into one feed row with the latest text and status', async () => {
+  it('collapses a tool call and its updates into one feed row that keeps its title', async () => {
     const { grokHome } = await liveFixture({
       updates: [
         {
@@ -116,6 +113,7 @@ describe('LiveMonitor feed projection', () => {
     expect(feed).toHaveLength(1)
     expect(feed[0]).toMatchObject({
       type: 'tool',
+      title: 'read_file',
       text: 'Read 3 files',
       status: 'completed',
       timestamp: new Date(1_784_887_202 * 1_000).toISOString(),
@@ -671,9 +669,7 @@ describe('LiveMonitor feed item details', () => {
     expect(new Set(feed.map((item) => item.id)).size).toBe(2)
   })
 
-  // The final title is not asserted because of the known live-monitor.ts:182 bug
-  // noted in the feed projection tests.
-  it('keeps text supplied by an earlier tool update when a later one has none', async () => {
+  it('keeps the title and text of an earlier tool update when a later one has neither', async () => {
     const { grokHome } = await liveFixture({
       updates: [
         {
@@ -698,6 +694,27 @@ describe('LiveMonitor feed item details', () => {
     const feed = monitor.snapshot().agents[0].feed
 
     expect(feed).toHaveLength(1)
-    expect(feed[0]).toMatchObject({ text: 'draft body', status: 'completed' })
+    expect(feed[0]).toMatchObject({ title: 'writer', text: 'draft body', status: 'completed' })
+  })
+
+  it('takes a later descriptive title from a tool update', async () => {
+    const { grokHome } = await liveFixture({
+      updates: [
+        {
+          timestamp: 1_784_887_200,
+          params: { update: { sessionUpdate: 'tool_call', toolCallId: 'tool-rename', title: 'read_file' } },
+        },
+        {
+          timestamp: 1_784_887_201,
+          params: {
+            update: { sessionUpdate: 'tool_call_update', toolCallId: 'tool-rename', description: 'Read project files' },
+          },
+        },
+      ],
+    })
+
+    const monitor = await startMonitor(grokHome)
+
+    expect(monitor.snapshot().agents[0].feed.map((item) => item.title)).toEqual(['Read project files'])
   })
 })

@@ -7,6 +7,9 @@
   and the runtime panels now load when first opened. If Grok UI is rebuilt or
   upgraded while a tab is open, opening a room that hasn't loaded yet reloads
   the page once to pick up the new build instead of showing the error screen.
+- Tool rows in the Live roster keep their descriptive title, such as "Read
+  project files", when a later update only changes the status. They no
+  longer fall back to "tool call update".
 
 ## 0.14.0 — 2026-10-12
 

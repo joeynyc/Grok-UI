@@ -167,8 +167,10 @@ function feedFromUpdates(updates: ParsedUpdate[]): LiveFeedItem[] {
     if (!type) return
     const toolId = asString(update.toolCallId) || asString(update.tool_call_id)
     const status = asString(update.status)
-    const title = asString(update.title)
-      || asString(update.description)
+    // Only a title Grok sent may replace an earlier one; the derived fallback
+    // would turn "Read project files" into "tool call update" on status updates.
+    const reportedTitle = asString(update.title) || asString(update.description)
+    const title = reportedTitle
       || (type === 'system' ? 'Turn completed' : updateType.replaceAll('_', ' '))
     const text = compactText(contentText(update.content)
       || asString(update.command)
@@ -179,7 +181,7 @@ function feedFromUpdates(updates: ParsedUpdate[]): LiveFeedItem[] {
     if (type === 'tool' && toolId) {
       const existing = tools.get(toolId)
       if (existing) {
-        existing.title = title || existing.title
+        existing.title = reportedTitle || existing.title
         existing.text = text || existing.text
         existing.status = status || existing.status
         existing.timestamp = timestamp || existing.timestamp
