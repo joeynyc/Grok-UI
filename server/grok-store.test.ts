@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,6 +7,26 @@ import { LiveMonitor } from './live-monitor.js'
 
 const cleanup: string[] = []
 
+type DashboardResult = Awaited<ReturnType<GrokStore['dashboard']>>
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function dashboardResult(label: string): DashboardResult {
+  return { generatedAt: label, sessions: [] } as DashboardResult
+}
+
+function setDashboardBuilder(store: GrokStore, builder: () => Promise<DashboardResult>): void {
+  (store as unknown as { buildDashboard: () => Promise<DashboardResult> }).buildDashboard = builder
+}
+
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((directory) =>
     fs.rm(directory, { recursive: true, force: true }),
@@ -14,6 +34,128 @@ afterEach(async () => {
 })
 
 describe('GrokStore', () => {
+  it('coalesces concurrent cold dashboard builds and caches the result', async () => {
+    const store = new GrokStore('/tmp/grok-hud-cold-build-test')
+    const build = deferred<DashboardResult>()
+    const payload = dashboardResult('cold')
+    let builds = 0
+    setDashboardBuilder(store, () => {
+      builds += 1
+      return build.promise
+    })
+
+    const first = store.dashboard()
+    const second = store.dashboard()
+
+    expect(builds).toBe(1)
+    build.resolve(payload)
+    await expect(Promise.all([first, second])).resolves.toEqual([payload, payload])
+    expect(await store.dashboard()).toBe(payload)
+    expect(builds).toBe(1)
+  })
+
+  it('bypasses a warm completed cache and coalesces concurrent forced builds', async () => {
+    const store = new GrokStore('/tmp/grok-hud-forced-build-test')
+    const warm = dashboardResult('warm')
+    const refreshed = dashboardResult('refreshed')
+    const refresh = deferred<DashboardResult>()
+    let builds = 0
+    setDashboardBuilder(store, () => {
+      builds += 1
+      return builds === 1 ? Promise.resolve(warm) : refresh.promise
+    })
+
+    expect(await store.dashboard()).toBe(warm)
+    const first = store.dashboard(true)
+    const second = store.dashboard(true)
+
+    expect(builds).toBe(2)
+    refresh.resolve(refreshed)
+    await expect(Promise.all([first, second])).resolves.toEqual([refreshed, refreshed])
+    expect(await store.dashboard()).toBe(refreshed)
+    expect(builds).toBe(2)
+  })
+
+  it('expires a completed dashboard cache after two seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      const now = Date.now()
+      vi.setSystemTime(now)
+      const store = new GrokStore('/tmp/grok-hud-cache-expiry-test')
+      const first = dashboardResult('first')
+      const second = dashboardResult('second')
+      let builds = 0
+      setDashboardBuilder(store, () => Promise.resolve(++builds === 1 ? first : second))
+
+      expect(await store.dashboard()).toBe(first)
+      vi.setSystemTime(now + 1_999)
+      expect(await store.dashboard()).toBe(first)
+      expect(builds).toBe(1)
+      vi.setSystemTime(now + 2_000)
+      expect(await store.dashboard()).toBe(second)
+      expect(builds).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not let an older invalidated build overwrite a newer cached result', async () => {
+    const store = new GrokStore('/tmp/grok-hud-invalidated-build-test')
+    const older = deferred<DashboardResult>()
+    const newer = deferred<DashboardResult>()
+    const oldPayload = dashboardResult('old')
+    const newPayload = dashboardResult('new')
+    let builds = 0
+    setDashboardBuilder(store, () => (++builds === 1 ? older.promise : newer.promise))
+
+    const oldRequest = store.dashboard()
+    store.invalidate()
+    const newRequest = store.dashboard()
+
+    expect(builds).toBe(2)
+    newer.resolve(newPayload)
+    await expect(newRequest).resolves.toBe(newPayload)
+    older.resolve(oldPayload)
+    await expect(oldRequest).resolves.toBe(oldPayload)
+    expect(await store.dashboard()).toBe(newPayload)
+    expect(builds).toBe(2)
+  })
+
+  it('keeps a newer build pending when an invalidated build rejects', async () => {
+    const store = new GrokStore('/tmp/grok-hud-invalidated-rejection-test')
+    const older = deferred<DashboardResult>()
+    const newer = deferred<DashboardResult>()
+    const payload = dashboardResult('new')
+    const failure = new Error('obsolete build failed')
+    let builds = 0
+    setDashboardBuilder(store, () => (++builds === 1 ? older.promise : newer.promise))
+
+    const oldRequest = store.dashboard()
+    store.invalidate()
+    const newRequest = store.dashboard()
+    older.reject(failure)
+    await expect(oldRequest).rejects.toBe(failure)
+    const joinedRequest = store.dashboard()
+
+    expect(builds).toBe(2)
+    newer.resolve(payload)
+    await expect(Promise.all([newRequest, joinedRequest])).resolves.toEqual([payload, payload])
+    expect(await store.dashboard()).toBe(payload)
+    expect(builds).toBe(2)
+  })
+
+  it('releases a failed build and allows a later request to retry', async () => {
+    const store = new GrokStore('/tmp/grok-hud-failed-build-test')
+    const payload = dashboardResult('retry')
+    const failure = new Error('dashboard build failed')
+    let builds = 0
+    setDashboardBuilder(store, () => (++builds === 1 ? Promise.reject(failure) : Promise.resolve(payload)))
+
+    await expect(store.dashboard()).rejects.toBe(failure)
+    await expect(store.dashboard()).resolves.toBe(payload)
+    expect(builds).toBe(2)
+  })
+
   it('aggregates local session signals without reading conversation bodies', async () => {
     const grokHome = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-hud-test-'))
     cleanup.push(grokHome)
