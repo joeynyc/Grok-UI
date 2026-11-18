@@ -175,6 +175,11 @@ try {
     results,
   }, null, 2))
 } finally {
-  if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
-  await fs.rm(fixtureRoot, { recursive: true, force: true })
+  try {
+    if (server?.listening) {
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    }
+  } finally {
+    await fs.rm(fixtureRoot, { recursive: true, force: true })
+  }
 }
