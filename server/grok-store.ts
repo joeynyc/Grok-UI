@@ -269,6 +269,8 @@ async function collectMemory(grokHome: string): Promise<MemoryItem[]> {
 export class GrokStore {
   readonly grokHome: string
   private cache: { at: number; payload: DashboardPayload } | null = null
+  // Concurrent callers share a snapshot build; invalidation detaches without cancelling filesystem work.
+  private inFlight: Promise<DashboardPayload> | null = null
   private liveStatuses = new Map<string, Extract<SessionStatus, 'live' | 'attention'>>()
 
   constructor(
@@ -280,6 +282,7 @@ export class GrokStore {
 
   invalidate(): void {
     this.cache = null
+    this.inFlight = null
   }
 
   setLiveStatuses(statuses: Map<string, Extract<SessionStatus, 'live' | 'attention'>>): boolean {
@@ -291,9 +294,28 @@ export class GrokStore {
     return true
   }
 
-  async dashboard(force = false): Promise<DashboardPayload> {
-    if (!force && this.cache && Date.now() - this.cache.at < 2_000) return this.cache.payload
+  dashboard(force = false): Promise<DashboardPayload> {
+    if (!force && this.cache && Date.now() - this.cache.at < 2_000) {
+      return Promise.resolve(this.cache.payload)
+    }
+    if (this.inFlight) return this.inFlight
 
+    const build = this.buildDashboard()
+    this.inFlight = build
+    void build.then(
+      (payload) => {
+        if (this.inFlight !== build) return
+        this.cache = { at: Date.now(), payload }
+        this.inFlight = null
+      },
+      () => {
+        if (this.inFlight === build) this.inFlight = null
+      },
+    )
+    return build
+  }
+
+  private async buildDashboard(): Promise<DashboardPayload> {
     const sessionsRoot = path.join(this.grokHome, 'sessions')
     const summaryFiles = await listFilesNamed(sessionsRoot, 'summary.json', 3)
     const [sessionData, library, memory, dataBytes, versionJson] = await Promise.all([
@@ -350,7 +372,6 @@ export class GrokStore {
       library,
       memory,
     }
-    this.cache = { at: Date.now(), payload }
     return payload
   }
 
