@@ -107,7 +107,7 @@ choices, and interruption.
 
 <div align="center">
 <a href="https://raw.githubusercontent.com/joeynyc/Grok-UI/main/docs/architecture.svg">
-<img src="docs/architecture.svg" width="820" alt="Browser connected to a local Grok UI supervisor, local state and ACP control, plus authenticated read-only remote host agents"/>
+<img src="docs/architecture.svg" width="820" alt="Browser connected to a local Grok UI supervisor with local ACP control, read-only fleet monitoring, and separate-token, opt-in control limited to managed sessions"/>
 </a>
 </div>
 
