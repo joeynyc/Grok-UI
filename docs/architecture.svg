@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
-  <title id="title">Grok UI local-first command and read-only fleet architecture</title>
-  <desc id="desc">A browser connects to a local Express and SSE supervisor, which reads local Grok state, controls a local Grok ACP process, watches Git workspaces, and monitors authenticated remote host agents over SSH forwarding or Tailscale.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Grok UI local-first architecture with read-only fleet monitoring and restricted remote session control</title>
+  <desc id="desc">A browser connects to a local Express and SSE supervisor. It reads local Grok state, controls a local Grok ACP process, and watches Git workspaces. Registered remote hosts expose authenticated, bounded read-only monitoring separately from optional managed-session control, which requires a distinct host control token and explicit opt-in and is limited to starting or continuing sessions, choosing Grok-advertised permissions, and interrupting a turn. There is no remote shell or arbitrary command interface.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#07090d"/>
@@ -18,18 +18,29 @@
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
       <path d="M0 0 9 4.5 0 9Z" fill="#ff4a3d"/>
     </marker>
+    <marker id="monitorArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 9 4.5 0 9Z" fill="#65cfff"/>
+    </marker>
+    <marker id="controlArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 9 4.5 0 9Z" fill="#ffc66d"/>
+    </marker>
     <style>
       .label{font:700 18px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px;fill:#f4f1e9}
       .eyebrow{font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px;fill:#ff5a4b}
       .copy{font:400 13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#858b96}
+      .small{font:400 11px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#a7adb8}
       .node{fill:#0d1015;stroke:#343842;stroke-width:1.5}
       .edge{fill:none;stroke:#ff4a3d;stroke-width:2;marker-end:url(#arrow)}
       .return{fill:none;stroke:#65cfff;stroke-width:1.5;stroke-dasharray:6 8}
+      .monitor-edge{fill:none;stroke:#65cfff;stroke-width:2;marker-end:url(#monitorArrow)}
+      .monitor-return{fill:none;stroke:#65cfff;stroke-width:1.5;stroke-dasharray:6 8}
+      .control-edge{fill:none;stroke:#ffc66d;stroke-width:2;marker-end:url(#controlArrow)}
+      .control-return{fill:none;stroke:#ffc66d;stroke-width:1.5;stroke-dasharray:6 8}
     </style>
   </defs>
-  <rect width="1200" height="760" rx="22" fill="url(#bg)"/>
-  <path d="M40 42H1160M40 718H1160" stroke="#252832"/>
-  <text x="54" y="72" class="eyebrow">LOCAL COMMAND + FLEET MONITOR / 01</text>
+  <rect width="1200" height="800" rx="22" fill="url(#bg)"/>
+  <path d="M40 42H1160M40 758H1160" stroke="#252832"/>
+  <text x="54" y="72" class="eyebrow">LOCAL COMMAND + FLEET MONITOR / SESSION CONTROL</text>
   <text x="1146" y="72" text-anchor="end" class="copy">LOCAL-FIRST · NO CLOUD DASHBOARD REQUIRED</text>
 
   <rect class="node" x="54" y="190" width="220" height="170" rx="8"/>
@@ -66,23 +77,30 @@
   <text x="832" y="421" class="label">GIT WORKSPACES</text>
   <text x="832" y="442" class="copy">status · branch · bounded diff</text>
 
-  <rect class="node" x="802" y="525" width="330" height="120" rx="8"/>
-  <text x="832" y="561" class="eyebrow">REMOTE READ-ONLY PLANE</text>
-  <text x="832" y="593" class="label">HOST AGENTS</text>
-  <text x="832" y="618" class="copy">identity · sessions · runs · runtime · usage</text>
-  <text x="832" y="638" class="copy">bearer auth · protocol v1 · bounded GET</text>
+  <text x="832" y="479" class="eyebrow">REMOTE HOST AGENT / SSH / TAILSCALE</text>
+  <rect class="node" x="802" y="492" width="330" height="82" rx="8"/>
+  <text x="832" y="518" class="eyebrow">READ-ONLY MONITORING</text>
+  <text x="832" y="546" class="label">HOST OBSERVATIONS</text>
+  <text x="832" y="565" class="copy">authenticated GET · bounded · v1</text>
+  <rect class="node" x="802" y="584" width="330" height="120" rx="8"/>
+  <text x="832" y="610" class="eyebrow">SEPARATE CONTROL CHANNEL</text>
+  <text x="832" y="638" class="label">MANAGED SESSIONS ONLY</text>
+  <text x="832" y="658" class="small">separate token · host opt-in · gated</text>
+  <text x="832" y="676" class="small">start · follow-up · advertised permissions</text>
+  <text x="832" y="692" class="small">interrupt active turn · no shell / exec</text>
 
   <path class="edge" d="M274 262H372"/>
   <path class="return" d="M372 300H274"/>
   <path class="edge" d="M702 204C750 204 752 155 802 155"/>
   <path class="edge" d="M702 275H802"/>
   <path class="edge" d="M702 346C750 346 752 405 802 405"/>
-  <path class="edge" d="M650 412C650 544 742 585 802 585"/>
-  <path class="return" d="M802 608C720 608 682 559 682 412"/>
+  <path class="monitor-edge" d="M702 350C744 350 744 530 802 530"/>
+  <path class="monitor-return" d="M802 553C762 553 762 380 702 380"/>
+  <path class="control-edge" d="M702 393C778 393 778 620 802 620"/>
+  <path class="control-return" d="M802 646C790 646 790 410 702 410"/>
   <text x="314" y="244" class="copy">commands</text>
   <text x="302" y="324" class="copy">live events</text>
-  <text x="604" y="560" class="copy">SSH forward / Tailscale</text>
+  <text x="54" y="736" class="copy">ACP CONTROL RUNS LOCALLY ON EACH AUTHORIZED HOST</text>
+  <text x="1146" y="736" text-anchor="end" class="copy">NO REMOTE SHELL OR ARBITRARY COMMANDS</text>
 
-  <text x="54" y="700" class="copy">LOCAL ACP CONTROL STAYS ON THIS MACHINE</text>
-  <text x="1146" y="700" text-anchor="end" class="copy">REMOTE HOSTS ARE MONITOR-ONLY IN v0.10</text>
 </svg>

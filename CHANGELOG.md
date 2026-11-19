@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Security: update body-parser to 2.4.0, qs to 6.17.0, and zod to 4.6.7 in the lockfile to address GHSA-27r3-jxmh-p828, GHSA-mrhx-c7xc-m3w5, and GHSA-6pq8-jhm2-2vcw.
 - The dashboard loads about 31% less JavaScript up front (129 kB → 89 kB
   gzipped). Every room except Live, both session consoles, the launch form,
   and the runtime panels now load when first opened. If Grok UI is rebuilt or
