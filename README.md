@@ -30,6 +30,8 @@ and move through your complete local history without leaving the browser.
 > [!NOTE]
 > Grok UI is an independent community project. It is not affiliated with or endorsed by xAI.
 
+**Follow [@aijoey](https://x.com/aijoey) on X** for Grok UI releases and demos.
+
 ## What it does
 
 <table>
