@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    groups:
+      react-updates:
+        applies-to: version-updates
+        patterns:
+          - react
+          - react-dom
   - package-ecosystem: github-actions
     directory: /
     schedule:
