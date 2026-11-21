@@ -122,7 +122,8 @@ tokens never enter the browser.
 
 ### Requirements
 
-- Node.js 22 or newer
+- Node.js 22 or newer to run the packaged CLI
+- Node.js 22.12 or newer to build from source (see [contributor requirements](CONTRIBUTING.md#development) for the full toolchain)
 - A working [`grok`](https://github.com/xai-org/grok-build) installation
 - Grok Build account access
 

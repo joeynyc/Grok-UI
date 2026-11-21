@@ -4,7 +4,7 @@ Thanks for helping improve Grok UI.
 
 ## Development
 
-1. Install Node.js 22 or newer and Grok Build.
+1. Install Node.js 22.18+ (22.x), 24.11+ (24.x), or 26+ and Grok Build.
 2. Run `npm install`.
 3. Run `npm run dev`.
 4. Before submitting a change, run `npm run verify`.
@@ -14,6 +14,10 @@ Thanks for helping improve Grok UI.
 7. For changes to `server/session-state.ts`, `session-reader.ts`,
    `live-monitor.ts`, or `usage-export.ts`, run `npm run test:mutation` and
    check that the mutation score in its summary has not dropped.
+
+Source builds need Node.js 22.12+, but the full contributor toolchain has
+stricter requirements: Vitest supports `^22.12.0 || ^24.0.0 || >=26.0.0`,
+and the locked mutation-test dependencies need `^22.18.0 || >=24.11.0`.
 
 Keep the server loopback-only during development. Tests must not depend on real Grok credentials or make model requests.
 
