@@ -114,8 +114,8 @@ try {
   ])
   await fs.writeFile(path.join(installDirectory, 'package.json'), '{"private":true,"type":"module"}\n')
   await fs.writeFile(fakeGrok, `#!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
+const { existsSync, readFileSync } = require('node:fs')
+const path = require('node:path')
 const marker = path.join(process.env.GROK_HOME || '', 'package-cli-ready')
 const mode = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : 'missing'
 if (process.argv[2] === 'version' && mode !== 'missing') console.log('Grok Build package-smoke')
