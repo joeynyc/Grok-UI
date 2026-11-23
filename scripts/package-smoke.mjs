@@ -11,9 +11,14 @@ const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'grok-ui-package-'
 const packDirectory = path.join(temporaryRoot, 'pack')
 const installDirectory = path.join(temporaryRoot, 'install')
 const grokHome = path.join(temporaryRoot, 'grok-home')
+const doctorGrokHome = path.join(temporaryRoot, 'doctor-grok-home')
 const stateDirectory = path.join(temporaryRoot, 'state')
+const doctorHome = path.join(temporaryRoot, 'doctor-home')
+const doctorConfig = path.join(doctorHome, '.config')
+const doctorDirectory = path.join(temporaryRoot, 'doctor-cwd')
 const fakeGrok = path.join(temporaryRoot, 'grok')
 const readyMarker = path.join(grokHome, 'package-cli-ready')
+const doctorReadyMarker = path.join(doctorGrokHome, 'package-cli-ready')
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
 function run(command, args, cwd) {
@@ -110,7 +115,10 @@ try {
     fs.mkdir(packDirectory),
     fs.mkdir(installDirectory),
     fs.mkdir(grokHome),
+    fs.mkdir(doctorGrokHome),
     fs.mkdir(stateDirectory),
+    fs.mkdir(doctorConfig, { recursive: true }),
+    fs.mkdir(doctorDirectory),
   ])
   await fs.writeFile(path.join(installDirectory, 'package.json'), '{"private":true,"type":"module"}\n')
   await fs.writeFile(fakeGrok, `#!/usr/bin/env node
@@ -140,12 +148,20 @@ else process.exit(1)
   if (version !== manifest.version) throw new Error(`expected CLI ${manifest.version}, received ${version}`)
   const help = run(executable, ['--help'], installDirectory)
   if (!help.includes('grok-ui doctor')) throw new Error('CLI help is missing the doctor workflow')
+  const doctorEnvironment = {
+    PATH: process.env.PATH,
+    HOME: doctorHome,
+    USERPROFILE: doctorHome,
+    XDG_CONFIG_HOME: doctorConfig,
+    GROK_BIN: fakeGrok,
+    GROK_HOME: doctorGrokHome,
+    ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+  }
   const doctor = spawnSync(executable, ['doctor'], {
-    cwd: installDirectory,
+    cwd: doctorDirectory,
     env: {
-      ...process.env,
+      ...doctorEnvironment,
       GROK_BIN: 'grok-ui-smoke-missing-cli',
-      GROK_HOME: grokHome,
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -156,6 +172,35 @@ else process.exit(1)
     || doctor.stdout.includes(temporaryRoot)
   ) {
     throw new Error('packaged doctor did not return a safe actionable failure')
+  }
+  await fs.writeFile(doctorReadyMarker, 'ready\n')
+  const sourceDoctor = spawnSync(process.execPath, [path.join(projectRoot, 'scripts', 'doctor.mjs')], {
+    cwd: doctorDirectory,
+    env: doctorEnvironment,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (
+    sourceDoctor.status !== 0
+    || !sourceDoctor.stdout.includes('Ready. Run `npm start`')
+    || !sourceDoctor.stdout.includes('Grok authentication  model access confirmed')
+  ) {
+    throw new Error(`source doctor did not return source launch guidance and ready diagnostics: ${sourceDoctor.stderr || sourceDoctor.stdout}`)
+  }
+  const packagedDoctor = spawnSync(executable, ['doctor'], {
+    cwd: doctorDirectory,
+    env: doctorEnvironment,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (
+    packagedDoctor.status !== 0
+    || !packagedDoctor.stdout.includes('Ready. Run `npx --yes grok-ui`')
+    || packagedDoctor.stdout.includes('Ready. Run `grok-ui`')
+    || packagedDoctor.stdout.includes('npm start')
+    || !packagedDoctor.stdout.includes('Grok authentication  model access confirmed')
+  ) {
+    throw new Error(`packaged doctor did not return package launch guidance and ready diagnostics: ${packagedDoctor.stderr || packagedDoctor.stdout}`)
   }
   const remoteEnvironment = { ...process.env }
   delete remoteEnvironment.GROK_UI_TOKEN
@@ -361,6 +406,7 @@ else process.exit(1)
   console.log(`✓ Packed artifact     ${packed.filename}`)
   console.log(`✓ Isolated install    production dependencies installed`)
   console.log(`✓ Executable          help, version, and doctor commands passed`)
+  console.log(`✓ Doctor guidance     packaged grok-ui and source npm start commands confirmed`)
   console.log(`✓ Remote safety       tokenless non-loopback bind rejected`)
   console.log(`✓ Production server   health check passed on ${process.platform}`)
   console.log(`✓ Browser security    CSP and frame protection headers confirmed`)
