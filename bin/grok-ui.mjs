@@ -63,7 +63,8 @@ async function main() {
 
   if (command === 'doctor') {
     if (args.length) throw new Error('The doctor command does not accept additional options.')
-    await import('../scripts/doctor.mjs')
+    const { runDoctor } = await import('../scripts/doctor.mjs')
+    runDoctor('grok-ui')
     return
   }
   if (command !== 'start' && command !== 'agent') throw new Error(`Unknown command: ${command}`)
