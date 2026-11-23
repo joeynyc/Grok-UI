@@ -195,7 +195,8 @@ else process.exit(1)
   })
   if (
     packagedDoctor.status !== 0
-    || !packagedDoctor.stdout.includes('Ready. Run `grok-ui`')
+    || !packagedDoctor.stdout.includes('Ready. Run `npx --yes grok-ui`')
+    || packagedDoctor.stdout.includes('Ready. Run `grok-ui`')
     || packagedDoctor.stdout.includes('npm start')
     || !packagedDoctor.stdout.includes('Grok authentication  model access confirmed')
   ) {
